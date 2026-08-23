@@ -1,0 +1,1 @@
+<h1>Closing {{ $month }}/{{ $year }}</h1><p>Pendapatan: Rp {{ number_format($totalIncome,0,',','.') }}</p><p>Pengeluaran: Rp {{ number_format($totalExpense,0,',','.') }}</p><p>Nilai Material: Rp {{ number_format($materialValue,0,',','.') }}</p><h2>Laba Bersih: Rp {{ number_format($profit,0,',','.') }}</h2>
