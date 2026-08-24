@@ -2,6 +2,8 @@
     $nav = [
         'dashboard' => ['label' => 'Dashboard', 'icon' => 'o-home'],
         'orders.index' => ['label' => 'Pesanan', 'icon' => 'o-shopping-cart'],
+        'orders.daily-summary' => ['label' => 'Sum Harian', 'icon' => 'o-chart-bar'],
+        'orders.weekly-closing' => ['label' => 'Closing Mingguan', 'icon' => 'o-clipboard-document-check'],
         'invoices.index' => ['label' => 'Invoice', 'icon' => 'o-document-text'],
         'expenses.index' => ['label' => 'Pengeluaran', 'icon' => 'o-arrow-trending-down'],
         'materials.index' => ['label' => 'Material', 'icon' => 'o-cube'],
@@ -42,7 +44,9 @@
                 @php
                     $isActive = match($route) {
                         'dashboard' => $currentRoute === 'dashboard',
-                        'orders.index' => str_starts_with($currentRoute, 'orders.'),
+                        'orders.index' => in_array($currentRoute, ['orders.index', 'orders.create', 'orders.edit', 'orders.store', 'orders.update'], true),
+                        'orders.daily-summary' => $currentRoute === 'orders.daily-summary',
+                        'orders.weekly-closing' => $currentRoute === 'orders.weekly-closing',
                         'invoices.index' => str_starts_with($currentRoute, 'invoices.'),
                         'expenses.index' => str_starts_with($currentRoute, 'expenses.'),
                         'materials.index' => str_starts_with($currentRoute, 'materials.'),
@@ -57,6 +61,7 @@
                         'o-cube' => 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4',
                         'o-calculator' => 'M9 7h6m-6 4h6m-6 4h6m-3-12v16m-7-4h14a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z',
                         'o-chart-bar' => 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z',
+                        'o-clipboard-document-check' => 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a3 3 0 006 0M9 5a3 3 0 016 0m-6 9l2 2 4-4',
                         'o-user' => 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z',
                     };
                 @endphp

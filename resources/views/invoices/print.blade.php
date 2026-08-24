@@ -206,7 +206,7 @@
         {{-- Header --}}
         <div class="header">
             <div>
-                <div class="brand-name">Awe Print</div>
+                <div class="brand-name">{{ $invoice->branch->name }}</div>
                 <div class="brand-tagline">DTF Printing Services</div>
             </div>
             <div class="invoice-meta">
@@ -246,17 +246,15 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @php
-                        $totalQty = $invoice->items->sum('qty');
-                        $totalAmount = $totalQty * 25000;
-                    @endphp
-                    <tr>
-                        <td>1</td>
-                        <td>Print DTF</td>
-                        <td>{{ number_format($totalQty, 2, ',', '.') }} m</td>
-                        <td>Rp25.000</td>
-                        <td>Rp{{ number_format($totalAmount, 0, ',', '.') }}</td>
-                    </tr>
+                    @foreach($invoice->items as $item)
+                        <tr>
+                            <td>{{ $loop->iteration }}</td>
+                            <td>{{ $item->description ?: ($item->product?->name ?? 'Produk') }} @if($item->size)<span style="font-weight:400">({{ $item->size }})</span>@endif</td>
+                            <td>{{ number_format($item->qty, 2, ',', '.') }}</td>
+                            <td>Rp{{ number_format($item->price, 0, ',', '.') }}</td>
+                            <td>Rp{{ number_format($item->subtotal, 0, ',', '.') }}</td>
+                        </tr>
+                    @endforeach
                 </tbody>
             </table>
         </div>
@@ -266,7 +264,7 @@
             <div class="total-box">
                 <div class="total-row">
                     <div class="total-label">Total Bayar</div>
-                    <div class="total-amount">Rp{{ number_format($totalAmount, 0, ',', '.') }}</div>
+                    <div class="total-amount">Rp{{ number_format($invoice->total, 0, ',', '.') }}</div>
                 </div>
             </div>
         </div>
@@ -275,11 +273,15 @@
         <div class="footer">
             <div class="footer-section">
                 <div class="footer-label">Pembayaran</div>
-                <div class="footer-text">BCA &middot; 3372278711</div>
-                <div class="footer-text">a.n Saepul Maulana</div>
+                @if(strtoupper($invoice->branch->code) === 'EPUL')
+                    <div class="footer-text">BCA &middot; 3372278711</div>
+                    <div class="footer-text">a.n Saepul Maulana</div>
+                @else
+                    <div class="footer-text">Informasi rekening belum tersedia untuk cabang {{ $invoice->branch->name }}.</div>
+                @endif
                 <div class="thanks">Terima kasih atas pesanan Anda.</div>
             </div>
-            <div class="company-name">Awe Print</div>
+            <div class="company-name">{{ $invoice->branch->name }}</div>
         </div>
 
     </div>

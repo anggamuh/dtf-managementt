@@ -13,6 +13,8 @@ class Closing extends Model
         'branch_id',
         'month',
         'year',
+        'period_start',
+        'period_end',
         'income',
         'expense',
         'hpp',
@@ -32,6 +34,8 @@ class Closing extends Model
     protected $casts = [
         'month' => 'integer',
         'year' => 'integer',
+        'period_start' => 'date',
+        'period_end' => 'date',
         'income' => 'decimal:2',
         'expense' => 'decimal:2',
         'hpp' => 'decimal:2',

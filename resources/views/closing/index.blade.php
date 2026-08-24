@@ -18,7 +18,7 @@
 
     {{-- Generate Closing --}}
     <div class="mt-5 rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm dark:border-[#253247] dark:bg-[#111827]">
-        <p class="text-sm font-medium text-[#64748B] mb-3 dark:text-[#94A3B8]">Buat / Perbarui Closing Bulan Berjalan</p>
+        <p class="text-sm font-medium text-[#64748B] mb-3 dark:text-[#94A3B8]">Buat / Perbarui Closing dengan rentang tanggal</p>
         <form method="POST" action="{{ route('closing.generate') }}" class="flex flex-wrap items-end gap-3" onsubmit="showGenerateClosingConfirmation(event, this);">
             @csrf
             <input type="hidden" name="branch_id" value="{{ $branchId }}">
@@ -31,6 +31,14 @@
                         </option>
                     @endfor
                 </select>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold uppercase tracking-wide text-[#64748B] mb-1 dark:text-[#94A3B8]">Tanggal Mulai</label>
+                <input type="date" name="start_date" value="{{ $startDate }}" class="rounded-xl border border-[#E2E8F0] bg-white dark:bg-[#111827] dark:text-[#F8FAFC] px-3 py-2 text-sm">
+            </div>
+            <div>
+                <label class="block text-xs font-semibold uppercase tracking-wide text-[#64748B] mb-1 dark:text-[#94A3B8]">Tanggal Akhir</label>
+                <input type="date" name="end_date" value="{{ $endDate }}" class="rounded-xl border border-[#E2E8F0] bg-white dark:bg-[#111827] dark:text-[#F8FAFC] px-3 py-2 text-sm">
             </div>
             <div>
                 <label class="block text-xs font-semibold uppercase tracking-wide text-[#64748B] mb-1 dark:text-[#94A3B8]">Tahun</label>
@@ -68,7 +76,7 @@
                 @forelse($closings as $c)
                     <tr class="border-b border-[#E2E8F0] hover:bg-[#F8FAFC] transition-colors duration-150 dark:border-[#253247] dark:hover:bg-[#172033]">
                         <td class="p-4 font-medium text-[#0F172A] dark:text-[#F8FAFC]">
-                            {{ \Carbon\Carbon::create()->month((int) $c->month)->translatedFormat('F') }} {{ (int) $c->year }}
+                            {{ $c->period_start?->format('d/m/Y') ?? \Carbon\Carbon::create()->month((int) $c->month)->startOfMonth()->format('d/m/Y') }} - {{ $c->period_end?->format('d/m/Y') ?? \Carbon\Carbon::create()->month((int) $c->month)->endOfMonth()->format('d/m/Y') }}
                         </td>
                         <td class="p-4 text-right text-[#0F172A] dark:text-[#F8FAFC]">Rp {{ number_format($c->income,0,',','.') }}</td>
                         <td class="p-4 text-right text-[#0F172A] dark:text-[#F8FAFC]">Rp {{ number_format($c->expense,0,',','.') }}</td>

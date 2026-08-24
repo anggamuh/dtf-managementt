@@ -40,7 +40,18 @@ class OrderController extends Controller
     public function store(Request $request) { $data=$this->validated($request); $data['branch_id']=$this->branchId($request); $data['order_number']='ORD-'.now()->format('YmdHis').'-'.random_int(100,999); $data=$this->totals($data); Order::create($data); return redirect()->route('orders.index',['branch_id'=>$data['branch_id']])->with('message','Pesanan berhasil disimpan.'); }
     public function edit(Request $request,Order $order) { $this->guard($order); return view('orders.form',['order'=>$order,'branches'=>$this->branches(),'customers'=>Customer::where('branch_id',$order->branch_id)->where('active',true)->orderBy('name')->get(),'products'=>Product::where('branch_id',$order->branch_id)->where('active',true)->orderBy('name')->get()]); }
     public function update(Request $request,Order $order) { $this->guard($order); $data=$this->totals($this->validated($request)); $order->update($data); return redirect()->route('orders.index',['branch_id'=>$order->branch_id])->with('message','Pesanan berhasil diperbarui.'); }
-    public function destroy(Order $order) { $this->guard($order); abort_if($order->invoice_id,422,'Pesanan yang sudah ditagihkan tidak dapat dihapus.'); $order->delete(); return back()->with('message','Pesanan berhasil dihapus.'); }
+    public function destroy(Order $order)
+    {
+        $this->guard($order);
+
+        if ($order->invoice_id) {
+            return back()->with('error', 'Pesanan ini sudah ditagihkan dan tidak dapat dihapus.');
+        }
+
+        $order->delete();
+
+        return back()->with('message', 'Pesanan berhasil dihapus.');
+    }
     
     public function complete(Request $request, Order $order)
     {
@@ -69,10 +80,17 @@ class OrderController extends Controller
     {
         $branchId = $this->branchId($request);
         $ids = $request->input('ids', []);
+        $requestedCount = count($ids);
         $orders = Order::where('branch_id', $branchId)->whereIn('id', $ids)->whereNull('invoice_id')->get();
+
+        if ($orders->count() !== $requestedCount) {
+            return back()->with('error', 'Pesanan tidak dapat dihapus karena terdapat pesanan yang sudah ditagihkan.');
+        }
+
         foreach ($orders as $order) {
             $order->delete();
         }
+
         return back()->with('message', count($orders).' pesanan berhasil dihapus.');
     }
 

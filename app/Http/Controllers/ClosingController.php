@@ -25,13 +25,16 @@ class ClosingController extends Controller
         $branchId = $this->branchId($r);
         $month = (int) $r->input('month', now()->month);
         $year = (int) $r->input('year', now()->year);
+        $startDate = $r->input('start_date', Carbon::create($year, $month, 1)->startOfMonth()->toDateString());
+        $endDate = $r->input('end_date', Carbon::create($year, $month, 1)->endOfMonth()->toDateString());
+        abort_if($endDate < $startDate, 422, 'Tanggal akhir harus sama atau setelah tanggal mulai.');
 
         $closing = Closing::when($branchId !== 0, fn($q) => $q->where('branch_id', $branchId))
             ->where('month', $month)
             ->where('year', $year)
             ->first();
 
-        $data = $this->service->getData($branchId, $month, $year, $closing);
+        $data = $this->service->getData($branchId, $month, $year, $closing, Carbon::parse($startDate), Carbon::parse($endDate));
 
         $closings = Closing::when($branchId !== 0, fn($q) => $q->where('branch_id', $branchId))
             ->orderByDesc('year')
@@ -40,7 +43,7 @@ class ClosingController extends Controller
             ->withQueryString();
 
         return view('closing.index', $data + compact(
-            'branchId', 'month', 'year', 'closing', 'closings'
+            'branchId', 'month', 'year', 'startDate', 'endDate', 'closing', 'closings'
         ) + [
             'branches' => $this->branches(),
         ]);
@@ -53,6 +56,8 @@ class ClosingController extends Controller
         $data = $r->validate([
             'month' => 'required|integer|between:1,12',
             'year'  => 'required|integer|min:2020|max:2100',
+            'start_date' => 'required|date',
+            'end_date' => 'required|date|after_or_equal:start_date',
         ]);
 
         abort_if($branchId === 0, 422, 'Pilih cabang terlebih dahulu untuk melakukan generate closing.');
@@ -64,7 +69,7 @@ class ClosingController extends Controller
 
         abort_if($existing?->is_locked, 422, 'Closing yang sudah dikunci tidak dapat digenerate ulang.');
 
-        $this->service->generate($branchId, $data['month'], $data['year']);
+        $this->service->generate($branchId, $data['month'], $data['year'], Carbon::parse($data['start_date']), Carbon::parse($data['end_date']));
 
         return back()->with('message', 'Closing berhasil digenerate.');
     }
@@ -99,8 +104,8 @@ class ClosingController extends Controller
             $closing = $this->service->generate($branchId, $d['month'], $d['year']);
         }
 
-        $start = Carbon::create($d['year'], $d['month'], 1)->startOfMonth();
-        $end = (clone $start)->endOfMonth();
+        $start = $closing->period_start?->copy() ?? Carbon::create($d['year'], $d['month'], 1)->startOfMonth();
+        $end = $closing->period_end?->copy() ?? (clone $start)->endOfMonth();
 
         $closing->update([
             'saldo_tahanan'  => $d['saldo_tahanan'] ?? 0,
@@ -147,8 +152,8 @@ class ClosingController extends Controller
             }
         }
 
-        $start = Carbon::create($d['year'], $d['month'], 1)->startOfMonth();
-        $end = (clone $start)->endOfMonth();
+        $start = $closing->period_start?->copy() ?? Carbon::create($d['year'], $d['month'], 1)->startOfMonth();
+        $end = $closing->period_end?->copy() ?? (clone $start)->endOfMonth();
         $this->service->calculateHpp($closing, $start, $end);
 
         return back()->with('message', 'Stock akhir material berhasil disimpan.');
@@ -206,8 +211,8 @@ class ClosingController extends Controller
         $closing->loadMissing('materials.material');
 
         // Ensure HPP is calculated automatically when viewing if missing
-        $start = Carbon::create($year, $month, 1)->startOfMonth();
-        $end = (clone $start)->endOfMonth();
+        $start = $closing->period_start?->copy() ?? Carbon::create($year, $month, 1)->startOfMonth();
+        $end = $closing->period_end?->copy() ?? (clone $start)->endOfMonth();
         if (empty($closing->hpp) || empty($closing->hpp_per_meter)) {
             $this->service->calculateHpp($closing, $start, $end);
             $closing->refresh();

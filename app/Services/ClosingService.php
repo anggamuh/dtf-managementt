@@ -19,10 +19,10 @@ class ClosingService
      * Generate atau refresh closing untuk bulan tertentu.
      * Semua kalkulasi dilakukan otomatis, tanpa input manual.
      */
-    public function generate(int $branchId, int $month, int $year): Closing
+    public function generate(int $branchId, int $month, int $year, ?Carbon $start = null, ?Carbon $end = null): Closing
     {
-        $start = Carbon::create($year, $month, 1)->startOfMonth();
-        $end = (clone $start)->endOfMonth();
+        $start ??= Carbon::create($year, $month, 1)->startOfMonth();
+        $end ??= (clone $start)->endOfMonth();
 
         Log::info('[ClosingService::generate] START', [
             'branch_id' => $branchId,
@@ -53,6 +53,8 @@ class ClosingService
             ]);
 
             $closing->fill([
+                'period_start' => $start->toDateString(),
+                'period_end' => $end->toDateString(),
                 'income' => $income,
                 'expense' => $expense,
                 'profit' => $profit,
@@ -112,10 +114,10 @@ class ClosingService
     /**
      * Ambil semua data yang dibutuhkan untuk view Closing (index/show).
      */
-    public function getData(int $branchId, int $month, int $year, ?Closing $closing): array
+    public function getData(int $branchId, int $month, int $year, ?Closing $closing, ?Carbon $start = null, ?Carbon $end = null): array
     {
-        $start = Carbon::create($year, $month, 1)->startOfMonth();
-        $end = (clone $start)->endOfMonth();
+        $start ??= $closing?->period_start?->copy() ?? Carbon::create($year, $month, 1)->startOfMonth();
+        $end ??= $closing?->period_end?->copy() ?? (clone $start)->endOfMonth();
 
         // === PEMASUKAN & PENGELUARAN ===
         $invoices = $this->getInvoicesForPeriod($branchId, $start, $end);

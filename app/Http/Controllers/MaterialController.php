@@ -128,6 +128,14 @@ class MaterialController extends Controller
     public function destroy(Material $material)
     {
         $this->guard($material);
+
+        // A material can be referenced by stock movements and historical closing
+        // components. Do not rely on the database constraint for this user-facing
+        // validation: it would expose a SQL exception instead of a clear message.
+        if ($material->movements()->exists() || $material->closingMaterials()->exists()) {
+            return back()->with('error', 'Data tidak dapat dihapus karena sudah digunakan pada transaksi atau closing.');
+        }
+
         $material->delete();
         return back()->with('message', 'Material berhasil dihapus.');
     }

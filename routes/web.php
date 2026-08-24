@@ -10,6 +10,7 @@ use App\Http\Controllers\MaterialController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ReportController;
+use App\Http\Controllers\OrderSummaryController;
 use App\Http\Controllers\SpreadsheetImportController;
 
 Route::get('/', function () {
@@ -25,6 +26,8 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
     Route::resource('orders', OrderController::class)->except('show');
+    Route::get('orders/daily-summary', [OrderSummaryController::class, 'daily'])->name('orders.daily-summary');
+    Route::get('orders/weekly-closing', [OrderSummaryController::class, 'weekly'])->name('orders.weekly-closing');
     Route::patch('orders/{order}/complete', [OrderController::class, 'complete'])->name('orders.complete');
     Route::delete('orders/bulk-destroy', [OrderController::class, 'bulkDestroy'])->name('orders.bulk-destroy');
     Route::get('imports/income', [SpreadsheetImportController::class, 'incomeForm'])->name('imports.income.form');
