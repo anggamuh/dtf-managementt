@@ -23,10 +23,13 @@ class AppServiceProvider extends ServiceProvider
     {
         // Share branches and selected branch id with all views for authenticated users
         View::composer('*', function ($view) {
-            if (auth()->check()) {
-                $canAll = auth()->user()->hasAnyRole(['Super Admin', 'Owner']);
-                $branches = $canAll ? Branch::orderBy('name')->get() : Branch::whereKey(auth()->user()->branch_id)->get();
-                $selected = (int) session('selected_branch_id', auth()->user()->branch_id);
+            // Seluruh akun memakai guard web; data cabang global hanya diperlukan
+            // layout operasional dan aman untuk user yang memiliki role Spatie.
+            if (auth('web')->check()) {
+                $employee = auth('web')->user();
+                $canAll = $employee->hasAnyRole(['Super Admin', 'Owner']);
+                $branches = $canAll ? Branch::orderBy('name')->get() : Branch::whereKey($employee->branch_id)->get();
+                $selected = (int) session('selected_branch_id', $employee->branch_id);
                 $view->with('globalBranches', $branches)->with('globalSelectedBranchId', $selected);
             }
         });

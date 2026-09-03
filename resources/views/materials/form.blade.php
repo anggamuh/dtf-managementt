@@ -1,118 +1,20 @@
 @extends('layouts.app')
-
+@section('title',$material->exists ? 'Edit Material' : 'Tambah Material')
 @section('content')
-    <div class="mb-6 flex flex-wrap items-center gap-3">
-        <div>
-            <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100">{{ $material->exists ? 'Edit' : 'Tambah' }} Material</h1>
-            <p class="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
-                {{ $material->exists ? 'Perbarui detail material '.$material->name.'.' : 'Daftarkan material baru.' }}
-            </p>
-        </div>
-        @if($material->exists && $material->minimum_stock !== null && $material->stock <= $material->minimum_stock)
-            <span class="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-400">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"/>
-                </svg>
-                Stok Menipis
-            </span>
-        @endif
-    </div>
+@php $activeBranch=$branches->firstWhere('id',$material->branch_id); @endphp
+<div class="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><div class="mb-3 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[.15em] text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300"><span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>Inventory workspace</div><div class="flex flex-wrap items-center gap-3"><h1 class="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">{{ $material->exists ? 'Edit material' : 'Material baru' }}</h1>@if($material->exists&&$material->minimum_stock!==null&&$material->stock<=$material->minimum_stock)<span class="app-badge bg-amber-100 text-amber-700">Stok menipis</span>@endif</div><p class="mt-2 max-w-2xl text-sm text-slate-500 dark:text-slate-400">Kelola identitas, standar harga, supplier, dan batas aman persediaan material.</p></div><a href="{{ route('materials.index') }}" class="app-btn app-btn-secondary min-h-11">← Kembali ke daftar</a></div>
 
-    <form method="POST" action="{{ $material->exists ? route('materials.update', $material) : route('materials.store') }}"
-          class="max-w-2xl rounded-2xl border border-slate-200 bg-white dark:bg-slate-900 shadow-sm dark:border-slate-700 dark:text-slate-100">
-        @csrf
-        @if($material->exists)
-            @method('PUT')
-        @endif
-        <input type="hidden" name="branch_id" value="{{ $material->branch_id }}">
-
-        {{-- Section: basic info --}}
-        <div class="flex items-center gap-3 border-b border-slate-100 px-6 py-4 dark:border-slate-800">
-            <span class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
-                </svg>
-            </span>
-            <div class="text-sm font-semibold text-slate-800 dark:text-slate-100">Informasi Material</div>
-        </div>
-
-        <div class="p-6">
-            <div class="grid gap-5 md:grid-cols-2">
-                <label class="block md:col-span-2">
-                    <span class="text-sm font-medium text-slate-700 dark:text-slate-300">Nama Material</span>
-                    <input type="text"
-                           name="name"
-                           value="{{ old('name', $material->name) }}"
-                           placeholder="Contoh: Tinta DTF Putih"
-                           class="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-500">
-                </label>
-
-                <label class="block">
-                    <span class="text-sm font-medium text-slate-700 dark:text-slate-300">Satuan</span>
-                    <input type="text"
-                           name="unit"
-                           value="{{ old('unit', $material->unit) }}"
-                           placeholder="Contoh: liter, roll, pcs"
-                           class="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-500">
-                </label>
-
-                <label class="block">
-                    <span class="text-sm font-medium text-slate-700 dark:text-slate-300">Supplier</span>
-                    <input type="text"
-                           name="supplier"
-                           value="{{ old('supplier', $material->supplier) }}"
-                           placeholder="Nama toko/supplier"
-                           class="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-500">
-                </label>
-
-                <label class="block">
-                    <span class="text-sm font-medium text-slate-700 dark:text-slate-300">Stok Minimum</span>
-                    <input type="number"
-                           step=".01"
-                           name="minimum_stock"
-                           value="{{ old('minimum_stock', $material->minimum_stock) }}"
-                           class="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
-                    <span class="mt-1 block text-xs text-slate-400 dark:text-slate-500">Batas bawah sebelum ditandai "Stok Menipis".</span>
-                </label>
-            </div>
-        </div>
-
-        {{-- Info: Automatic fields --}}
-        <div class="border-t border-slate-100 dark:border-slate-800">
-            <div class="p-6">
-                <div class="rounded-xl bg-blue-50 border border-blue-200 px-4 py-3 dark:bg-blue-500/10 dark:border-blue-500/20">
-                    <div class="flex items-start gap-3">
-                        <svg class="w-5 h-5 text-blue-600 mt-0.5 dark:text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                        </svg>
-                        <div class="text-sm text-blue-700 dark:text-blue-300">
-                            <p class="font-medium">Stok dan harga terisi otomatis</p>
-                            <ul class="mt-1 list-disc list-inside text-xs space-y-0.5">
-                                <li>Stok bertambah saat mencatat Expense kategori <strong>Bahan Baku</strong></li>
-                                <li>Harga dihitung otomatis (rata-rata tertimbang dari pembelian)</li>
-                                <li>Untuk menyesuaikan stok fisik, gunakan <strong>Stok Opname</strong> dari halaman daftar Material</li>
-                            </ul>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        {{-- Submit --}}
-        <div class="border-t border-slate-100 px-6 py-4 dark:border-slate-800">
-            <div class="flex gap-3">
-                <button type="submit"
-                        class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-white text-sm font-medium hover:bg-blue-700 transition-all duration-200 shadow-sm hover:shadow-md dark:bg-blue-500 dark:hover:bg-blue-600">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                    </svg>
-                    Simpan
-                </button>
-                <a href="{{ route('materials.index') }}"
-                   class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-all duration-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">
-                    Batal
-                </a>
-            </div>
-        </div>
-    </form>
+<form method="POST" action="{{ $material->exists ? route('materials.update',$material) : route('materials.store') }}" class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]" x-data="{submitting:false}" @submit="if(submitting){$event.preventDefault()}else{submitting=true}">
+@csrf @if($material->exists) @method('PUT') @endif<input type="hidden" name="branch_id" value="{{ $material->branch_id }}">
+<div class="space-y-6">
+    <section class="app-card p-5 sm:p-7"><div class="mb-7 flex items-center gap-3"><span class="grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-700 text-white shadow-lg shadow-emerald-500/20"><svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg></span><div><h2 class="font-bold">Identitas material</h2><p class="text-xs text-slate-500">Informasi yang tampil pada transaksi dan laporan</p></div></div>
+        <div class="grid gap-5 md:grid-cols-2"><label class="block md:col-span-2"><span class="text-sm font-semibold">Nama material <b class="text-rose-500">*</b></span><input required name="name" value="{{ old('name',$material->name) }}" class="app-input mt-2" placeholder="Contoh: Tinta DTF Putih"></label><label class="block"><span class="text-sm font-semibold">Satuan <b class="text-rose-500">*</b></span><input required name="unit" value="{{ old('unit',$material->unit) }}" class="app-input mt-2" placeholder="Liter, kilogram, roll, pcs"></label><label class="block"><span class="text-sm font-semibold">Supplier</span><input name="supplier" value="{{ old('supplier',$material->supplier) }}" class="app-input mt-2" placeholder="Nama toko atau supplier"></label></div>
+    </section>
+    <section class="app-card p-5 sm:p-7"><div class="mb-7 flex items-center gap-3"><span class="grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br from-blue-500 to-blue-700 text-white shadow-lg shadow-blue-500/20"><svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 8c-2.2 0-4 1.1-4 2.5S9.8 13 12 13s4 1.1 4 2.5S14.2 18 12 18s-4-1.1-4-2.5M12 6v14M5 4h14a2 2 0 012 2v14H3V6a2 2 0 012-2z"/></svg></span><div><h2 class="font-bold">Harga dan kontrol stok</h2><p class="text-xs text-slate-500">Nilai master dan ambang persediaan</p></div></div>
+        <div class="grid gap-5 md:grid-cols-2"><label class="block"><span class="text-sm font-semibold">Harga standar <b class="text-rose-500">*</b></span><div class="relative mt-2"><span class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-blue-600">Rp</span><input required type="number" min="0" step="0.01" name="price" value="{{ old('price',$material->price??0) }}" class="app-input pl-12" placeholder="0"></div><span class="mt-2 block text-xs leading-5 text-slate-500">Digunakan sebagai nilai master material dan tidak berubah otomatis saat pembelian.</span></label><label class="block"><span class="text-sm font-semibold">Stok minimum <b class="text-rose-500">*</b></span><div class="relative mt-2"><input required type="number" min="0" step="0.01" name="minimum_stock" value="{{ old('minimum_stock',$material->minimum_stock) }}" class="app-input pr-20" placeholder="0"><span class="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold uppercase text-slate-400">{{ old('unit',$material->unit?:'unit') }}</span></div><span class="mt-2 block text-xs leading-5 text-slate-500">Material diberi peringatan saat stok menyentuh atau berada di bawah angka ini.</span></label></div>
+    </section>
+    <section class="app-card overflow-hidden"><div class="grid md:grid-cols-2"><div class="border-b border-slate-200 p-5 dark:border-slate-800 md:border-b-0 md:border-r"><span class="text-[10px] font-bold uppercase tracking-widest text-blue-600">Stok bertambah</span><h3 class="mt-2 font-bold">Pembelian bahan baku</h3><p class="mt-2 text-sm leading-6 text-slate-500">Catat melalui Pengeluaran dengan kategori Bahan Baku dan pilih material ini.</p></div><div class="p-5"><span class="text-[10px] font-bold uppercase tracking-widest text-emerald-600">Stok disesuaikan</span><h3 class="mt-2 font-bold">Stok opname</h3><p class="mt-2 text-sm leading-6 text-slate-500">Gunakan fitur opname di daftar Material untuk mencocokkan persediaan fisik.</p></div></div></section>
+</div>
+<aside class="space-y-5 xl:sticky xl:top-24 xl:self-start"><section class="app-card p-5"><span class="text-[10px] font-bold uppercase tracking-[.16em] text-slate-400">Ringkasan material</span><div class="mt-5 space-y-4 text-sm"><div class="flex justify-between gap-4 border-b border-slate-100 pb-4 dark:border-slate-800"><span class="text-slate-500">Cabang</span><b class="text-right">{{ $activeBranch?->name??'Cabang aktif' }}</b></div><div class="flex justify-between gap-4 border-b border-slate-100 pb-4 dark:border-slate-800"><span class="text-slate-500">Stok saat ini</span><b>{{ $material->exists ? number_format($material->stock,2,',','.') : '0,00' }} {{ $material->unit }}</b></div><div class="flex justify-between gap-4"><span class="text-slate-500">Mode</span><span class="app-badge bg-blue-100 text-blue-700">{{ $material->exists?'Edit':'Baru' }}</span></div></div></section><section class="rounded-2xl bg-gradient-to-br from-blue-600 to-emerald-600 p-5 text-white shadow-xl shadow-blue-600/15"><p class="text-xs font-bold uppercase tracking-widest text-white/70">Alur persediaan</p><div class="mt-4 space-y-3 text-sm text-white/90"><p class="flex gap-2"><b>01</b><span>Buat master material</span></p><p class="flex gap-2"><b>02</b><span>Catat pembelian bahan</span></p><p class="flex gap-2"><b>03</b><span>Lakukan opname berkala</span></p></div></section><div class="grid gap-3"><button type="submit" class="app-btn app-btn-primary min-h-12 w-full" :disabled="submitting"><span x-show="!submitting">{{ $material->exists?'Simpan Perubahan':'Simpan Material' }}</span><span x-show="submitting">Menyimpan...</span></button><a href="{{ route('materials.index') }}" class="app-btn app-btn-secondary min-h-12 w-full">Batal</a></div></aside>
+</form>
 @endsection

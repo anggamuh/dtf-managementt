@@ -10,7 +10,10 @@ class Branch extends Model
     protected $fillable = [
         'name',
         'code',
+        'active',
     ];
+
+    protected $casts = ['active' => 'boolean'];
 
     public function users(): HasMany
     {

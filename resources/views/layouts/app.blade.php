@@ -13,21 +13,24 @@
         })();
     </script>
     <title>@yield('title', 'DTF Management')</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="min-h-screen bg-[#F8FAFC] text-[#0F172A] antialiased dark:bg-[#080F19] dark:text-[#F8FAFC]">
-    <div class="min-h-screen flex bg-[#F8FAFC] dark:bg-[#080F19]">
+    <div class="app-shell min-h-screen flex bg-[#F8FAFC] dark:bg-[#080F19]">
         <div id="sidebarOverlay" onclick="closeSidebar()" class="fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-sm lg:hidden hidden"></div>
 
         @include('components.sidebar')
 
-        <main class="flex-1 min-w-0">
+        <main class="app-main flex-1 min-w-0">
             <div class="hidden lg:block">
                 @include('components.navbar')
             </div>
 
             <header class="lg:hidden sticky top-0 z-40 border-b border-[#E2E8F0] bg-white/90 px-4 py-3 shadow-sm backdrop-blur-xl dark:border-[#253247] dark:bg-[#0B1220]/90 dark:text-slate-100">
-                <div class="flex items-center justify-between gap-4">
+                <div class="flex items-center justify-between">
                     <button onclick="openSidebar()" aria-label="Buka menu" class="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#E2E8F0] bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-[#253247] dark:bg-[#111827] dark:text-slate-200 dark:hover:bg-[#172033]">
                         <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M4 6h16M4 12h16M4 18h16"></path>
@@ -39,14 +42,20 @@
             </header>
 
             <div class="app-container">
-                @if(session('message'))
-                    <script>window.showSuccessAlert('{{ session('message') }}');</script>
-                @endif
-                @if(session('error'))
-                    <script>window.showErrorAlert('{{ session('error') }}');</script>
-                @endif
-                @if($errors->any())
-                    <script>window.showErrorAlert('Error', '{{ $errors->first() }}');</script>
+                @if(session('message') || session('error') || $errors->any())
+                    <script>
+                        document.addEventListener('DOMContentLoaded', function () {
+                            @if(session('message'))
+                                window.showSuccessAlert('Berhasil', @json(session('message')));
+                            @endif
+                            @if(session('error'))
+                                window.showErrorAlert('Terjadi Kesalahan', @json(session('error')));
+                            @endif
+                            @if($errors->any())
+                                window.showErrorAlert('Error', @json($errors->first()));
+                            @endif
+                        });
+                    </script>
                 @endif
 
                 @yield('content')

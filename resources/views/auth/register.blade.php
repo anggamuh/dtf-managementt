@@ -1,0 +1,19 @@
+@extends('layouts.auth')
+@section('title','Daftar Customer')
+@section('content')
+<span class="auth-kicker auth-mono">Start your order</span>
+<h2 class="auth-display">Buat akun customer.</h2>
+<p class="auth-intro">Daftar sekali untuk membuat dan memantau semua pesanan Anda.</p>
+@if($errors->any())<div class="auth-alert" role="alert">{{ $errors->first() }}</div>@endif
+<form method="POST" action="{{ route('register.store') }}" class="auth-form" x-data="{submitting:false}" @submit="if(submitting){$event.preventDefault()}else{submitting=true}">
+    @csrf
+    <div class="auth-field"><label for="name">Nama lengkap</label><input id="name" class="auth-input" name="name" value="{{ old('name') }}" placeholder="Nama Anda" autocomplete="name" required>@error('name')<p class="auth-error">{{ $message }}</p>@enderror</div>
+    <div class="auth-field"><label for="whatsapp">Nomor WhatsApp</label><input id="whatsapp" class="auth-input" name="whatsapp" value="{{ old('whatsapp') }}" placeholder="08xxxxxxxxxx" inputmode="tel" autocomplete="tel" required>@error('whatsapp')<p class="auth-error">{{ $message }}</p>@enderror</div>
+    <div class="auth-field"><label for="email">Alamat email</label><input id="email" class="auth-input" type="email" name="email" value="{{ old('email') }}" placeholder="nama@email.com" autocomplete="email" required>@error('email')<p class="auth-error">{{ $message }}</p>@enderror</div>
+    <div class="auth-field"><label for="register-password">Password</label><div class="auth-input-wrap"><input id="register-password" class="auth-input has-action" type="password" name="password" placeholder="Minimal 8 karakter" autocomplete="new-password" required><button class="auth-toggle" type="button" data-toggle-password="register-password" aria-label="Tampilkan password"><svg data-eye width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z"/><circle cx="12" cy="12" r="2.5"/></svg><svg data-eye-off class="hidden" width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 3l18 18M10.6 10.6a2 2 0 002.8 2.8M9.9 4.2A10.5 10.5 0 0112 4c6 0 9.5 8 9.5 8a16 16 0 01-2.2 3.2M6.6 6.6C4 8.3 2.5 12 2.5 12s3.5 8 9.5 8a10 10 0 004-.8"/></svg></button></div>@error('password')<p class="auth-error">{{ $message }}</p>@enderror</div>
+    <div class="auth-field"><label for="password-confirmation">Konfirmasi password</label><div class="auth-input-wrap"><input id="password-confirmation" class="auth-input has-action" type="password" name="password_confirmation" placeholder="Ulangi password" autocomplete="new-password" required><button class="auth-toggle" type="button" data-toggle-password="password-confirmation" aria-label="Tampilkan password"><svg data-eye width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z"/><circle cx="12" cy="12" r="2.5"/></svg><svg data-eye-off class="hidden" width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 3l18 18M10.6 10.6a2 2 0 002.8 2.8M9.9 4.2A10.5 10.5 0 0112 4c6 0 9.5 8 9.5 8a16 16 0 01-2.2 3.2M6.6 6.6C4 8.3 2.5 12 2.5 12s3.5 8 9.5 8a10 10 0 004-.8"/></svg></button></div></div>
+    <button class="auth-submit" type="submit" :disabled="submitting"><span x-show="!submitting">Buat Akun Customer</span><span x-show="submitting">Membuat akun...</span><span>→</span></button>
+</form>
+<div class="auth-switch">Sudah punya akun? <a href="{{ route('login') }}">Masuk sekarang</a></div>
+<a class="auth-back auth-mono" href="{{ url('/') }}">← KEMBALI KE BERANDA</a>
+@endsection

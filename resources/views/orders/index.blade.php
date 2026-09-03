@@ -107,8 +107,8 @@
                                 <span class="text-xs text-[#94A3B8] dark:text-[#64748B]">{{ $o->time->format('H:i') }}</span>
                             @endif
                         </td>
-                        <td class="p-4 text-[#0F172A] dark:text-[#F8FAFC]">{{ $o->customer->name }}</td>
-                        <td class="p-4 text-[#0F172A] dark:text-[#F8FAFC]">{{ $o->product_name }}</td>
+                        <td class="p-4 text-[#0F172A] dark:text-[#F8FAFC]">{{ $o->user?->name ?? $o->customer?->name ?? '-' }}</td>
+                        <td class="p-4 text-[#0F172A] dark:text-[#F8FAFC]">@if($o->isCustomerCustom())<a class="font-semibold text-blue-600" href="{{ route('orders.customer-detail',$o) }}">Pesanan Custom</a>@else{{ $o->product_name }}@endif</td>
                         <td class="p-4 text-right text-[#0F172A] dark:text-[#F8FAFC]">{{ $o->qty }}</td>
                         <td class="p-4 text-right font-medium text-[#0F172A] dark:text-[#F8FAFC]">Rp {{ number_format($o->total,0,',','.') }}</td>
                         <td class="p-4 text-center">

@@ -23,6 +23,11 @@ trait ResolvesBranch
         // 2. Fallback to session, then user's default branch
         $id = (int) $request->session()->get('selected_branch_id', auth()->user()->branch_id);
 
+        if ($id !== 0 && ! Branch::whereKey($id)->where('active', true)->exists()) {
+            $request->session()->forget('selected_branch_id');
+            throw ValidationException::withMessages(['branch_id' => 'Cabang yang dipilih tidak valid atau tidak aktif.']);
+        }
+
         // 3. Authorization check: non-admin users can only access their own branch
         if (! $this->canAccessAllBranches() && $id !== (int) auth()->user()->branch_id) {
             throw ValidationException::withMessages(['branch_id' => 'Anda tidak dapat mengakses cabang ini.']);

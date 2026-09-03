@@ -13,6 +13,8 @@ class Closing extends Model
         'branch_id',
         'month',
         'year',
+        'period_start',
+        'period_end',
         'income',
         'expense',
         'hpp',
@@ -20,6 +22,7 @@ class Closing extends Model
         'remaining_material',
         'saldo_tahanan',
         'saldo_realtime',
+        'saldo_realtime_locked_at',
         'gaji_karyawan',
         'operasional',
         'lain_lain',
@@ -32,6 +35,8 @@ class Closing extends Model
     protected $casts = [
         'month' => 'integer',
         'year' => 'integer',
+        'period_start' => 'date',
+        'period_end' => 'date',
         'income' => 'decimal:2',
         'expense' => 'decimal:2',
         'hpp' => 'decimal:2',
@@ -39,6 +44,7 @@ class Closing extends Model
         'remaining_material' => 'decimal:2',
         'saldo_tahanan' => 'decimal:2',
         'saldo_realtime' => 'decimal:2',
+        'saldo_realtime_locked_at' => 'datetime',
         'gaji_karyawan' => 'decimal:2',
         'operasional' => 'decimal:2',
         'lain_lain' => 'decimal:2',
@@ -47,10 +53,6 @@ class Closing extends Model
         'is_locked' => 'boolean',
         'locked_at' => 'datetime',
     ];
-
-    // ========================================================================
-    // RELATIONS
-    // ========================================================================
 
     public function branch(): BelongsTo
     {
@@ -62,26 +64,11 @@ class Closing extends Model
         return $this->hasMany(ClosingMaterial::class);
     }
 
-    // ========================================================================
-    // SCOPES
-    // ========================================================================
-
     public function scopeForMonth($query, int $month, int $year)
     {
         return $query->where('month', $month)->where('year', $year);
     }
 
-    // ========================================================================
-    // ENTITY METHODS
-    // ========================================================================
-
-    /**
-     * Kunci closing:
-     * 1. Dorong stock_akhir tiap komponen material ke stok Material sebenarnya.
-     * 2. Tandai closing sebagai locked.
-     * 3. Stock_akhir closing ini otomatis jadi stock_awal closing bulan depan
-     *    lewat syncMaterialComponents() di ClosingService.
-     */
     public function lock(): void
     {
         abort_if($this->is_locked, 403, 'Closing bulan ini sudah dikunci.');
@@ -105,7 +92,10 @@ class Closing extends Model
                 $material->update(['stock' => $component->stock_akhir]);
             }
 
-            $this->update(['is_locked' => true, 'locked_at' => now()]);
+            $this->update([
+                'is_locked' => true,
+                'locked_at' => now(),
+            ]);
         });
     }
 }

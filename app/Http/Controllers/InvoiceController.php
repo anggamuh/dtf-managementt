@@ -18,7 +18,7 @@ class InvoiceController extends Controller
     public function index(Request $request)
     {
         $branchId = $this->branchId($request);
-        $invoices = Invoice::with('customer')
+        $invoices = Invoice::with('customer', 'orders')
             ->when($branchId !== 0, fn($q) => $q->where('branch_id', $branchId))
             ->when($request->search, fn ($q, $s) => $q->where(fn ($q) => $q->where('invoice_number', 'like', "%{$s}%")->orWhereHas('customer', fn ($q) => $q->where('name', 'like', "%{$s}%"))))
             ->when($request->status, fn ($q, $s) => $q->where('status', $s))
@@ -95,6 +95,10 @@ class InvoiceController extends Controller
             $total = max(0, $subtotal - $discount);
             $paid = min($data['paid'] ?? 0, $total);
 
+            // subtotal/total/paid/remaining/status di bawah ini tetap disimpan
+            // sebagai catatan historis (mis. untuk laporan), tapi index & print
+            // TIDAK lagi membaca kolom ini — keduanya pakai accessor live_*
+            // di Invoice model yang selalu menghitung ulang dari orders saat ini.
             $invoice = Invoice::create([
                 'branch_id' => $branchId,
                 'customer_id' => $data['customer_id'],
@@ -132,7 +136,7 @@ class InvoiceController extends Controller
     public function edit(Request $request, Invoice $invoice)
     {
         $this->guard($invoice);
-        $invoice->load(['items.order', 'customer']);
+        $invoice->load(['items.order', 'orders', 'customer']);
 
         $dateStart = $request->date_start ?: optional($invoice->period_start)->toDateString();
         $dateEnd = $request->date_end ?: optional($invoice->period_end)->toDateString();
@@ -207,6 +211,8 @@ class InvoiceController extends Controller
             $invoice->refresh();
             abort_if($invoice->items()->count() === 0, 422, 'Invoice harus memiliki minimal satu item.');
 
+            // Kolom-kolom ini tetap di-update sebagai catatan/histori, tapi
+            // tampilan (index & print) tidak bergantung lagi pada nilai ini.
             $subtotal = $invoice->items()->sum('subtotal');
             $discount = $data['discount'] ?? $invoice->discount;
             $total = max(0, $subtotal - $discount);
@@ -241,7 +247,7 @@ class InvoiceController extends Controller
     public function print(Invoice $invoice)
     {
         $this->guard($invoice);
-        $invoice->load('customer', 'items.product', 'branch');
+        $invoice->load('customer', 'orders', 'branch');
 
         return view('invoices.print', compact('invoice'));
     }
@@ -249,17 +255,16 @@ class InvoiceController extends Controller
     public function downloadPdf(Invoice $invoice)
     {
         $this->guard($invoice);
-        $invoice->load('customer', 'items.product', 'branch');
+        $invoice->load('customer', 'orders', 'branch');
 
         $data = [
             'invoice' => $invoice,
             'customer' => $invoice->customer,
-            'items' => $invoice->items,
             'branch' => $invoice->branch,
         ];
 
         $pdf = Pdf::loadView('invoices.print', $data)->setPaper('a4', 'portrait');
-        
+
         return $pdf->download("invoice-{$invoice->invoice_number}.pdf");
     }
 

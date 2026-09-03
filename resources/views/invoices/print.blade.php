@@ -233,7 +233,7 @@
             </div>
         </div>
 
-        {{-- Items Table --}}
+        {{-- Items Table (disummed, bukan per-baris) --}}
         <div class="table-wrap">
             <table>
                 <thead>
@@ -247,15 +247,23 @@
                 </thead>
                 <tbody>
                     @php
-                        $totalQty = $invoice->items->sum('qty');
-                        $totalAmount = $totalQty * 25000;
+                        // Harga satuan tetap solid Rp25.000/meter.
+                        $unitPrice = 25000;
+                        // Ambil langsung dari relasi orders (live), BUKAN dari
+                        // invoice_items yang cuma snapshot saat invoice dibuat.
+                        // Ini yang bikin print selalu sama dengan index, karena
+                        // keduanya sekarang baca sumber yang sama: orders saat ini.
+                        $totalQty = $invoice->live_qty;
+                        $subtotal = $invoice->live_subtotal;
+                        $discount = $invoice->discount ?? 0;
+                        $totalAmount = $invoice->live_total;
                     @endphp
                     <tr>
                         <td>1</td>
                         <td>Print DTF</td>
                         <td>{{ number_format($totalQty, 2, ',', '.') }} m</td>
-                        <td>Rp25.000</td>
-                        <td>Rp{{ number_format($totalAmount, 0, ',', '.') }}</td>
+                        <td>Rp{{ number_format($unitPrice, 0, ',', '.') }}</td>
+                        <td>Rp{{ number_format($subtotal, 0, ',', '.') }}</td>
                     </tr>
                 </tbody>
             </table>
@@ -265,6 +273,16 @@
         <div class="total-section">
             <div class="total-box">
                 <div class="total-row">
+                    <div class="total-label">Subtotal</div>
+                    <div class="total-amount" style="font-size: 14px; color: #444;">Rp{{ number_format($subtotal, 0, ',', '.') }}</div>
+                </div>
+                @if($discount > 0)
+                    <div class="total-row" style="margin-top: 6px;">
+                        <div class="total-label">Diskon</div>
+                        <div class="total-amount" style="font-size: 14px; color: #444;">- Rp{{ number_format($discount, 0, ',', '.') }}</div>
+                    </div>
+                @endif
+                <div class="total-row" style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #dfe7d8;">
                     <div class="total-label">Total Bayar</div>
                     <div class="total-amount">Rp{{ number_format($totalAmount, 0, ',', '.') }}</div>
                 </div>
@@ -273,12 +291,25 @@
 
         {{-- Footer --}}
         <div class="footer">
-            <div class="footer-section">
-                <div class="footer-label">Pembayaran</div>
-                <div class="footer-text">BCA &middot; 3372278711</div>
-                <div class="footer-text">a.n Saepul Maulana</div>
-                <div class="thanks">Terima kasih atas pesanan Anda.</div>
-            </div>
+           <div class="footer-section">
+    <div class="footer-label">Pembayaran</div>
+
+    @if(strtoupper($invoice->branch->code) === 'EPUL')
+        <div class="footer-text">BCA &middot; 3372278711</div>
+        <div class="footer-text">a.n Saepul Maulana</div>
+
+    @elseif(strtoupper($invoice->branch->code) === 'RAPLY')
+        <div class="footer-text">BCA &middot; 3372688103</div>
+        <div class="footer-text">a.n Ashil al azzis</div>
+
+    @else
+        <div class="footer-text">
+            Informasi rekening belum tersedia untuk cabang {{ $invoice->branch->name }}.
+        </div>
+    @endif
+
+    <div class="thanks">Terima kasih atas pesanan Anda.</div>
+</div>
             <div class="company-name">Awe Print</div>
         </div>
 

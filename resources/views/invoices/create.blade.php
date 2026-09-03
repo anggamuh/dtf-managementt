@@ -105,6 +105,7 @@
                                     <td class="p-4">
                                         <input type="checkbox" name="order_ids[]" value="{{ $o->id }}" checked
                                                data-total="{{ $o->total }}"
+                                               data-qty="{{ $o->qty }}"
                                                class="order-select-checkbox rounded border-slate-300 text-blue-600 focus:ring-blue-500/30 dark:border-slate-600 dark:bg-slate-800">
                                     </td>
                                     <td class="p-4 text-slate-600 dark:text-slate-400">{{ $o->date->format('d/m/Y') }}</td>
@@ -156,6 +157,10 @@
                                 <dd class="font-medium text-slate-700 dark:text-slate-200" id="subtotalDisplay">Rp 0</dd>
                             </div>
                             <div class="flex justify-between">
+                                <dt class="text-slate-500 dark:text-slate-400">Total Qty</dt>
+                                <dd class="font-medium text-slate-700 dark:text-slate-200" id="qtyDisplay">0 m</dd>
+                            </div>
+                            <div class="flex justify-between">
                                 <dt class="text-slate-500 dark:text-slate-400">Diskon</dt>
                                 <dd class="font-medium text-rose-600 dark:text-rose-400" id="discountDisplay">&ndash; Rp 0</dd>
                             </div>
@@ -200,6 +205,7 @@
             function recalc() {
                 const checked = Array.from(rowCheckboxes()).filter(cb => cb.checked);
                 const subtotal = checked.reduce((sum, cb) => sum + parseFloat(cb.dataset.total || 0), 0);
+                const qty = checked.reduce((sum, cb) => sum + parseFloat(cb.dataset.qty || 0), 0);
                 const discount = parseFloat(discountInput.value) || 0;
                 const paid = parseFloat(paidInput.value) || 0;
                 const total = Math.max(0, subtotal - discount);
@@ -207,6 +213,7 @@
 
                 document.getElementById('selectedCount').textContent = checked.length;
                 document.getElementById('subtotalDisplay').textContent = rupiah(subtotal);
+                document.getElementById('qtyDisplay').textContent = qty.toLocaleString('id-ID') + ' m';
                 document.getElementById('discountDisplay').textContent = '\u2013 ' + rupiah(discount);
                 document.getElementById('totalDisplay').textContent = rupiah(total);
                 document.getElementById('paidDisplay').textContent = rupiah(paid);

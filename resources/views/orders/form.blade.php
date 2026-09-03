@@ -1,3 +1,5 @@
+{{-- Dipakai khusus untuk EDIT pesanan (pesanan baru sekarang lewat orders/create.blade.php
+     yang punya panel draft). Isi file ini sengaja tidak diubah dari versi asli. --}}
 @extends('layouts.app')
 
 @section('content')
@@ -17,6 +19,7 @@
         @endif
 
         <input type="hidden" name="branch_id" value="{{ $order->branch_id }}">
+        <input type="hidden" name="return_url" value="{{ $returnUrl ?? '' }}">
 
         {{-- Section: order details --}}
         <div class="flex items-center gap-3 border-b border-slate-100 px-6 py-4 dark:border-slate-800">
@@ -137,7 +140,7 @@
                     </svg>
                     Simpan
                 </button>
-                <a href="{{ route('orders.index') }}"
+                <a href="{{ $returnUrl ?? route('orders.index') }}"
                    class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-all duration-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">
                     Batal
                 </a>

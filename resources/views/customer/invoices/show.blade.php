@@ -1,0 +1,5 @@
+@extends('layouts.customer')
+@section('title','Invoice')
+@section('content')
+<div class="mx-auto max-w-3xl"><div class="flex flex-col justify-between gap-3 sm:flex-row sm:items-center"><div><p class="text-sm text-slate-500">Invoice customer</p><h1 class="text-2xl font-bold">{{ $invoice->invoice_number }}</h1></div><a class="app-btn app-btn-primary" href="{{ route('customer.invoices.pdf',$invoice) }}">Download PDF</a></div><div class="app-card mt-6 p-6"><dl class="grid gap-4 sm:grid-cols-2"><div><dt class="text-xs text-slate-500">Pesanan</dt><dd class="font-semibold">{{ $invoice->order->order_number }}</dd></div><div><dt class="text-xs text-slate-500">Dibayar</dt><dd>{{ $invoice->paid_at->format('d/m/Y H:i') }}</dd></div><div><dt class="text-xs text-slate-500">Produk</dt><dd>Rp {{ number_format($invoice->product_total,0,',','.') }}</dd></div><div><dt class="text-xs text-slate-500">Ongkir</dt><dd>Rp {{ number_format($invoice->shipping_cost,0,',','.') }}</dd></div></dl><div class="mt-6 border-t pt-4 text-right text-xl font-bold">Total Rp {{ number_format($invoice->total,0,',','.') }}</div></div></div>
+@endsection

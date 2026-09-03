@@ -16,6 +16,7 @@ class RoleSeeder extends Seeder
             'Admin RAPLY',
             'Finance',
             'Produksi',
+            'Customer',
         ];
 
         foreach ($roles as $role) {

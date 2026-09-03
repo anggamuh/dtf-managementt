@@ -1,58 +1,39 @@
 @extends('layouts.app')
-
+@section('title', $expense->exists ? 'Edit Pengeluaran' : 'Tambah Pengeluaran')
 @section('content')
-    <h1 class="mb-6 text-2xl font-bold text-slate-800">{{ $expense->exists ? 'Edit' : 'Tambah' }} Pengeluaran</h1>
+@php $activeBranch=$branches->firstWhere('id',$expense->branch_id); @endphp
+<div class="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+    <div><div class="mb-3 inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[.15em] text-blue-700 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300"><span class="h-1.5 w-1.5 rounded-full bg-blue-500"></span>Finance workspace</div><h1 class="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">{{ $expense->exists ? 'Edit pengeluaran' : 'Catat pengeluaran baru' }}</h1><p class="mt-2 max-w-2xl text-sm text-slate-500 dark:text-slate-400">Rekam biaya operasional dan pembelian bahan dengan bukti transaksi yang dapat ditelusuri.</p></div>
+    <a href="{{ route('expenses.index') }}" class="app-btn app-btn-secondary min-h-11">← Kembali ke daftar</a>
+</div>
 
-    <form method="POST" action="{{ $expense->exists ? route('expenses.update', $expense) : route('expenses.store') }}" class="max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
-        @csrf
-        @if($expense->exists) @method('PUT') @endif
-        <input type="hidden" name="branch_id" value="{{ $expense->branch_id }}">
-
-        <div class="grid gap-5 md:grid-cols-2">
-            <label class="block"><span class="text-sm font-medium text-slate-700">Tanggal</span><input required type="date" name="date" value="{{ old('date', $expense->date?->format('Y-m-d')) }}" class="mt-1.5 w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"></label>
-            <label class="block"><span class="text-sm font-medium text-slate-700">Kategori</span><select required name="category" id="expense-category" class="mt-1.5 w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">@foreach($categories as $category)<option value="{{ $category }}" @selected(old('category', $expense->category) === $category)>{{ $category }}</option>@endforeach</select></label>
-            <label class="block md:col-span-2"><span class="text-sm font-medium text-slate-700">Nama pengeluaran</span><textarea required name="description" rows="2" class="mt-1.5 w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">{{ old('description', $expense->description) }}</textarea></label>
-            <div id="material-fields" class="contents">
-                <label class="block"><span class="text-sm font-medium text-slate-700">Material</span><select name="material_id" class="mt-1.5 w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"><option value="">Pilih material</option>@foreach($materials as $material)<option value="{{ $material->id }}" @selected((string) old('material_id', $expense->material_id) === (string) $material->id)>{{ $material->name }} ({{ $material->unit }})</option>@endforeach</select></label>
-                <label class="block"><span class="text-sm font-medium text-slate-700">Qty masuk</span><input type="number" min="0.01" step="0.01" name="quantity" value="{{ old('quantity', $expense->quantity) }}" class="mt-1.5 w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"></label>
+<form method="POST" action="{{ $expense->exists ? route('expenses.update',$expense) : route('expenses.store') }}" enctype="multipart/form-data" class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]" x-data="{submitting:false}" @submit="if(submitting){$event.preventDefault()}else{submitting=true}">
+    @csrf @if($expense->exists) @method('PUT') @endif
+    <input type="hidden" name="branch_id" value="{{ $expense->branch_id }}">
+    <div class="space-y-6">
+        <section class="app-card p-5 sm:p-7"><div class="mb-6 flex items-center gap-3"><span class="grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br from-blue-500 to-blue-700 text-white shadow-lg shadow-blue-500/20"><svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 6v12m4-9.5C16 7.1 14.2 6 12 6s-4 1.1-4 2.5S9.8 11 12 11s4 1.1 4 2.5S14.2 16 12 16s-4-1.1-4-2.5M5 4h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z"/></svg></span><div><h2 class="font-bold text-slate-900 dark:text-white">Detail transaksi</h2><p class="text-xs text-slate-500">Informasi utama pengeluaran</p></div></div>
+            <div class="grid gap-5 md:grid-cols-2">
+                <label class="block"><span class="text-sm font-semibold">Tanggal transaksi <b class="text-rose-500">*</b></span><input required type="date" name="date" value="{{ old('date',$expense->date?->format('Y-m-d')) }}" class="app-input mt-2"></label>
+                <label class="block"><span class="text-sm font-semibold">Kategori <b class="text-rose-500">*</b></span><select required name="category" id="expense-category" class="app-input mt-2">@foreach($categories as $category)<option value="{{ $category }}" @selected(old('category',$expense->category)===$category)>{{ $category }}</option>@endforeach</select></label>
+                <label class="block md:col-span-2"><span class="text-sm font-semibold">Nama atau keterangan pengeluaran <b class="text-rose-500">*</b></span><textarea required name="description" rows="3" class="app-input mt-2 resize-y" placeholder="Contoh: Pembelian tinta putih untuk produksi minggu ini">{{ old('description',$expense->description) }}</textarea></label>
+                <div id="material-fields" class="contents"><label class="block"><span class="text-sm font-semibold">Material <b class="text-rose-500">*</b></span><select name="material_id" class="app-input mt-2"><option value="">Pilih material</option>@foreach($materials as $material)<option value="{{ $material->id }}" @selected((string)old('material_id',$expense->material_id)===(string)$material->id)>{{ $material->name }} · {{ $material->unit }}</option>@endforeach</select></label><label class="block"><span class="text-sm font-semibold">Qty masuk <b class="text-rose-500">*</b></span><div class="relative mt-2"><input type="number" min="0.01" step="0.01" name="quantity" value="{{ old('quantity',$expense->quantity) }}" class="app-input pr-16" placeholder="0"><span class="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-xs text-slate-400">UNIT</span></div></label></div>
+                <label class="block"><span class="text-sm font-semibold">Jumlah pengeluaran <b class="text-rose-500">*</b></span><div class="relative mt-2"><span class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-blue-600">Rp</span><input required type="number" min="0.01" step="0.01" name="amount" value="{{ old('amount',$expense->amount) }}" class="app-input pl-12" placeholder="0"></div></label>
+                <label class="block"><span class="text-sm font-semibold">Metode pembayaran <b class="text-rose-500">*</b></span><input required name="payment_method" value="{{ old('payment_method',$expense->payment_method) }}" class="app-input mt-2" placeholder="Tunai, transfer, atau lainnya"></label>
             </div>
-            <label class="block"><span class="text-sm font-medium text-slate-700">Jumlah</span><input required type="number" min="0.01" step="0.01" name="amount" value="{{ old('amount', $expense->amount) }}" class="mt-1.5 w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"></label>
-            <label class="block"><span class="text-sm font-medium text-slate-700">Metode pembayaran</span><input required type="text" name="payment_method" value="{{ old('payment_method', $expense->payment_method) }}" class="mt-1.5 w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"></label>
-            <label class="block md:col-span-2">
-                <span class="text-sm font-medium text-slate-700">Bukti Transaksi (Proof)</span>
-                <div class="mt-2 flex items-center gap-4">
-                    <div class="flex-1">
-                        <input type="file" name="proof" accept=".jpg,.jpeg,.png,.pdf" class="hidden" id="proof-input" onchange="previewProof(this)">
-                        <label for="proof-input" class="inline-flex cursor-pointer items-center gap-2 rounded-xl border-2 border-dashed border-slate-300 px-4 py-3 text-sm text-slate-600 hover:border-blue-400 hover:text-blue-600 transition-colors">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
-                            </svg>
-                            <span>Pilih file (JPG, PNG, PDF, max 5MB)</span>
-                        </label>
-                    </div>
-                    <div id="proof-preview" class="hidden">
-                        <img id="proof-image" src="" alt="Preview" class="h-20 w-20 rounded-xl object-cover border border-slate-200 dark:border-slate-700">
-                        <a id="proof-pdf-link" href="" target="_blank" class="hidden h-20 w-20 rounded-xl border border-slate-200 items-center justify-center bg-slate-50 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800">
-                            <svg class="w-8 h-8 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
-                            </svg>
-                        </a>
-                    </div>
-                </div>
-                @if($expense->proof)
-                    <div class="mt-3 flex items-center gap-3">
-                        <span class="text-xs text-slate-500">File saat ini:</span>
-                        <a href="{{ asset('storage/' . $expense->proof) }}" target="_blank" class="text-sm text-blue-600 hover:text-blue-700 font-medium">Lihat Bukti</a>
-                        <button type="button" onclick="document.getElementById('proof-input').click()" class="text-sm text-slate-600 hover:text-slate-700">Ganti</button>
-                    </div>
-                @endif
-            </label>
-        </div>
-        <p id="material-help" class="mt-4 text-sm text-slate-500">Bahan Baku adalah pembelian material: qty dan nilai pembelian akan memperbarui stok serta harga rata-rata tertimbang.</p>
-        <div class="mt-6 flex gap-3">
-            <button type="submit" class="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700 transition-colors shadow-sm">Simpan</button>
-            <a href="{{ route('expenses.index') }}" class="rounded-xl border border-slate-300 px-5 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">Batal</a>
-        </div>
-    </form>
-    <script>const category=document.getElementById('expense-category'), fields=document.getElementById('material-fields'), help=document.getElementById('material-help'); function toggle(){const material=category.value==='Bahan Baku'; fields.style.display=material?'contents':'none'; help.style.display=material?'block':'none';} category.addEventListener('change',toggle); toggle();</script>
+            <div id="material-help" class="mt-5 rounded-2xl border border-blue-200 bg-blue-50/70 p-4 text-sm text-blue-800 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-200"><b>Pembelian bahan baku:</b> qty akan menambah stok material. Nilai pembelian tetap tersimpan sebagai histori pengeluaran.</div>
+        </section>
+
+        <section class="app-card p-5 sm:p-7"><div class="mb-5 flex items-center gap-3"><span class="grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-700 text-white shadow-lg shadow-emerald-500/20"><svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 16a4 4 0 01-.9-7.9A5 5 0 0115.9 6 5 5 0 0117 15.9M12 12v9m0-9l-3 3m3-3l3 3"/></svg></span><div><h2 class="font-bold">Bukti transaksi</h2><p class="text-xs text-slate-500">JPG, PNG, atau PDF · maksimum 5 MB</p></div></div>
+            <input type="file" name="proof" accept=".jpg,.jpeg,.png,.pdf" class="hidden" id="proof-input" onchange="previewProof(this)">
+            <label for="proof-input" class="group flex min-h-40 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50/60 p-6 text-center transition hover:border-blue-400 hover:bg-blue-50/60 dark:border-slate-700 dark:bg-slate-900/40 dark:hover:border-blue-500 dark:hover:bg-blue-500/5"><span class="grid h-12 w-12 place-items-center rounded-2xl bg-white text-blue-600 shadow-sm transition group-hover:-translate-y-1 dark:bg-slate-800"><svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 16V4m0 0L8 8m4-4l4 4M5 13v5a2 2 0 002 2h10a2 2 0 002-2v-5"/></svg></span><b class="mt-3 text-sm">Klik untuk memilih bukti transaksi</b><span id="proof-file-name" class="mt-1 text-xs text-slate-500">atau tarik file ke area ini</span></label>
+            <div id="proof-preview" class="mt-4 hidden items-center gap-4 rounded-2xl border border-slate-200 p-3 dark:border-slate-700"><img id="proof-image" class="hidden h-20 w-20 rounded-xl object-cover"><a id="proof-pdf-link" target="_blank" class="hidden h-20 w-20 place-items-center rounded-xl bg-rose-50 font-bold text-rose-600">PDF</a><div><b class="text-sm">File siap diunggah</b><p class="mt-1 text-xs text-slate-500">File akan disimpan saat formulir dikirim.</p></div></div>
+            @if($expense->proof)<div class="mt-4 flex flex-wrap items-center gap-3 rounded-xl bg-slate-50 p-3 text-sm dark:bg-slate-800"><span class="text-slate-500">Bukti saat ini</span><a href="{{ asset('storage/'.$expense->proof) }}" target="_blank" class="font-semibold text-blue-600">Lihat file ↗</a></div>@endif
+        </section>
+    </div>
+
+    <aside class="space-y-5 xl:sticky xl:top-24 xl:self-start"><section class="app-card p-5"><span class="text-[10px] font-bold uppercase tracking-[.16em] text-slate-400">Ringkasan pencatatan</span><div class="mt-5 space-y-4 text-sm"><div class="flex justify-between gap-4 border-b border-slate-100 pb-4 dark:border-slate-800"><span class="text-slate-500">Cabang</span><b class="text-right">{{ $activeBranch?->name ?? 'Cabang aktif' }}</b></div><div class="flex justify-between gap-4 border-b border-slate-100 pb-4 dark:border-slate-800"><span class="text-slate-500">Jenis</span><b>{{ $expense->exists ? 'Perubahan data' : 'Transaksi baru' }}</b></div><div class="flex justify-between gap-4"><span class="text-slate-500">Status</span><span class="app-badge bg-amber-100 text-amber-700">Draft</span></div></div></section><section class="rounded-2xl bg-gradient-to-br from-blue-600 to-emerald-600 p-5 text-white shadow-xl shadow-blue-600/15"><p class="text-xs font-bold uppercase tracking-widest text-white/70">Sebelum menyimpan</p><ul class="mt-4 space-y-3 text-sm text-white/90"><li>✓ Pastikan nominal sesuai bukti</li><li>✓ Pilih material untuk bahan baku</li><li>✓ Periksa cabang transaksi</li></ul></section><div class="grid gap-3"><button class="app-btn app-btn-primary min-h-12 w-full" type="submit" :disabled="submitting"><span x-show="!submitting">{{ $expense->exists ? 'Simpan Perubahan' : 'Catat Pengeluaran' }}</span><span x-show="submitting">Menyimpan...</span></button><a href="{{ route('expenses.index') }}" class="app-btn app-btn-secondary min-h-12 w-full">Batal</a></div></aside>
+</form>
+<script>
+const category=document.getElementById('expense-category'),fields=document.getElementById('material-fields'),help=document.getElementById('material-help');function toggleMaterial(){const active=category.value==='Bahan Baku';fields.style.display=active?'contents':'none';help.style.display=active?'block':'none';fields.querySelectorAll('select,input').forEach(el=>el.required=active)}category.addEventListener('change',toggleMaterial);toggleMaterial();let proofObjectUrl=null;function previewProof(input){const file=input.files[0],preview=document.getElementById('proof-preview'),img=document.getElementById('proof-image'),pdf=document.getElementById('proof-pdf-link'),name=document.getElementById('proof-file-name');if(proofObjectUrl)URL.revokeObjectURL(proofObjectUrl);if(!file){preview.classList.add('hidden');return}name.textContent=file.name;proofObjectUrl=URL.createObjectURL(file);preview.classList.remove('hidden');preview.classList.add('flex');if(file.type==='application/pdf'){img.classList.add('hidden');pdf.classList.remove('hidden');pdf.classList.add('grid');pdf.href=proofObjectUrl}else{pdf.classList.add('hidden');pdf.classList.remove('grid');img.classList.remove('hidden');img.src=proofObjectUrl}}
+</script>
 @endsection

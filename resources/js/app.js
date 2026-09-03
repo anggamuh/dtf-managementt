@@ -63,6 +63,30 @@ window.showLoadingAlert = (message = 'Mohon tunggu...') => {
 window.closeLoadingAlert = () => {
     Swal.close();
 };
+
+// Staggered page entrance and lightweight interactive depth for dashboard cards.
+document.addEventListener('DOMContentLoaded', () => {
+    const contentRoot = document.querySelector('.app-container')
+        || document.querySelector('.app-main main');
+
+    if (contentRoot) {
+        [...contentRoot.children].slice(0, 14).forEach((element, index) => {
+            element.classList.add('ui-page-reveal');
+            element.style.setProperty('--reveal-delay', `${Math.min(index * 55, 440)}ms`);
+        });
+    }
+
+    document.querySelectorAll('.app-card-hover, .app-stat-card').forEach(card => {
+        card.addEventListener('pointermove', event => {
+            if (window.innerWidth < 1024) return;
+            const bounds = card.getBoundingClientRect();
+            const rotateX = ((event.clientY - bounds.top) / bounds.height - .5) * -2.5;
+            const rotateY = ((event.clientX - bounds.left) / bounds.width - .5) * 2.5;
+            card.style.transform = `perspective(900px) translateY(-4px) rotateX(${rotateX}deg) rotateY(${rotateY}deg)`;
+        });
+        card.addEventListener('pointerleave', () => card.style.removeProperty('transform'));
+    });
+});
 // Theme management
 (function() {
     const THEME_KEY = 'theme';
@@ -113,4 +137,3 @@ window.closeLoadingAlert = () => {
 
     initTheme();
 })();
-

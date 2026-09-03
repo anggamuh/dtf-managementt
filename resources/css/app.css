@@ -7,8 +7,47 @@
 @source '../**/*.js';
 
 @theme {
-    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+    --font-sans: 'DM Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
+}
+
+/* Keep every application shell flush with the viewport edge. Tailwind's
+   preflight normally does this, but this explicit reset also covers pages
+   rendered outside the normal Vite entry point and prevents a dark strip
+   above sticky headers. */
+html,
+body,
+#app {
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    min-width: 0;
+    overflow-x: hidden;
+}
+
+/* Layout shells must begin at the viewport edge. Keep horizontal/content
+   spacing inside the content containers, never above the top navigation. */
+.app-shell,
+.app-main,
+.app-main > header,
+.app-main > .hidden {
+    margin-top: 0;
+}
+
+/* The desktop navbar is rendered inside a visibility wrapper. Keep that
+   wrapper flush and make the navbar opaque so no parent/background seam can
+   appear at the viewport edge during responsive recalculation. */
+.app-main > .hidden {
+    padding-top: 0;
+    border-top: 0;
+    line-height: 0;
+}
+.app-main > .hidden > header {
+    margin-top: 0;
+    border-top: 0;
+    line-height: normal;
 }
 
 /* ============================================
@@ -250,6 +289,11 @@
 }
 
 /* Scrollbar */
+[x-cloak] { display: none !important; }
+@media (max-width: 639px) {
+    .app-input { font-size: 1rem; min-height: 2.75rem; }
+    .app-btn { min-height: 2.75rem; }
+}
 ::-webkit-scrollbar {
     width: 8px;
     height: 8px;
@@ -263,4 +307,184 @@
 }
 ::-webkit-scrollbar-thumb:hover {
     background: var(--text-muted);
+}
+
+/* Refined scrollbar: dashboard and nested scroll areas */
+html {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--primary) 78%, var(--success)) color-mix(in srgb, var(--bg-page) 88%, var(--border-color));
+}
+*::-webkit-scrollbar {
+    width: 11px;
+    height: 11px;
+}
+*::-webkit-scrollbar-track {
+    background: color-mix(in srgb, var(--bg-page) 88%, var(--border-color));
+    border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb {
+    min-height: 48px;
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background:
+        linear-gradient(145deg, var(--primary), var(--success)) padding-box;
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / .14);
+}
+*::-webkit-scrollbar-thumb:hover {
+    border-width: 2px;
+    background:
+        linear-gradient(145deg, var(--primary-hover), color-mix(in srgb, var(--success) 82%, white)) padding-box;
+    box-shadow: 0 0 14px color-mix(in srgb, var(--primary) 35%, transparent);
+}
+*::-webkit-scrollbar-thumb:active {
+    background: linear-gradient(145deg, var(--success), var(--primary)) padding-box;
+}
+*::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+/* ============================================
+   Premium application surface
+   ============================================ */
+:root {
+    --app-glow-a: rgb(37 99 235 / 0.11);
+    --app-glow-b: rgb(16 185 129 / 0.08);
+}
+.dark {
+    --app-glow-a: rgb(59 130 246 / 0.15);
+    --app-glow-b: rgb(16 185 129 / 0.10);
+}
+.app-shell {
+    position: relative;
+    isolation: isolate;
+    background:
+        radial-gradient(700px circle at 82% 0%, var(--app-glow-a), transparent 56%),
+        radial-gradient(600px circle at 20% 92%, var(--app-glow-b), transparent 55%),
+        var(--bg-page) !important;
+}
+.app-shell::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    opacity: .42;
+    background-image:
+        linear-gradient(color-mix(in srgb, var(--border-color) 38%, transparent) 1px, transparent 1px),
+        linear-gradient(90deg, color-mix(in srgb, var(--border-color) 38%, transparent) 1px, transparent 1px);
+    background-size: 42px 42px;
+    mask-image: linear-gradient(to bottom, black, transparent 72%);
+}
+.app-container {
+    position: relative;
+}
+.app-card,
+.app-stat-card {
+    position: relative;
+    overflow: hidden;
+    border-radius: 1.15rem;
+    background: color-mix(in srgb, var(--bg-surface) 92%, transparent);
+    box-shadow: 0 1px 1px rgb(15 23 42 / .04), 0 16px 45px rgb(15 23 42 / .055);
+    backdrop-filter: blur(18px);
+}
+.app-card::before,
+.app-stat-card::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto;
+    height: 1px;
+    pointer-events: none;
+    background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--primary) 45%, transparent), transparent);
+    opacity: .7;
+}
+.app-card-hover,
+.app-stat-card {
+    transition: transform .35s cubic-bezier(.2,.8,.2,1), box-shadow .35s ease, border-color .35s ease;
+}
+.app-card-hover:hover,
+.app-stat-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 24px 55px rgb(15 23 42 / .12);
+}
+.app-btn {
+    position: relative;
+    overflow: hidden;
+    border-radius: .85rem;
+    font-weight: 650;
+    letter-spacing: -.01em;
+    transition: transform .2s ease, box-shadow .2s ease, background-color .2s ease, border-color .2s ease;
+}
+.app-btn:hover { transform: translateY(-2px); }
+.app-btn:active { transform: translateY(0) scale(.98); }
+.app-btn-primary::after {
+    content: "";
+    position: absolute;
+    inset: -2px;
+    background: linear-gradient(105deg, transparent 30%, rgb(255 255 255 / .38), transparent 70%);
+    transform: translateX(-110%);
+    transition: transform .65s ease;
+}
+.app-btn-primary:hover::after { transform: translateX(110%); }
+.app-btn-primary { box-shadow: 0 10px 25px color-mix(in srgb, var(--primary) 22%, transparent); }
+.app-input {
+    min-height: 2.8rem;
+    border-radius: .85rem;
+    background: color-mix(in srgb, var(--bg-surface) 88%, transparent);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / .035);
+}
+.app-input:hover { border-color: color-mix(in srgb, var(--primary) 42%, var(--border-strong)); }
+.app-input:focus {
+    transform: translateY(-1px);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 12%, transparent), 0 10px 24px rgb(15 23 42 / .07);
+}
+.app-table thead th {
+    background: color-mix(in srgb, var(--bg-surface-hover) 82%, transparent);
+    letter-spacing: .085em;
+}
+.app-table tbody tr { transition: transform .18s ease, background-color .18s ease; }
+.app-table tbody tr:hover { transform: translateX(3px); }
+.app-badge {
+    border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / .12);
+}
+#sidebar {
+    box-shadow: 18px 0 55px rgb(15 23 42 / .07);
+}
+#sidebar nav a:not(.sidebar-active):hover { transform: translateX(4px); }
+#sidebar nav a.sidebar-active { box-shadow: 0 10px 25px color-mix(in srgb, var(--primary) 25%, transparent); }
+#sidebar nav {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--primary) 55%, transparent) transparent;
+}
+#sidebar nav::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+}
+#sidebar nav::-webkit-scrollbar-track {
+    background: transparent;
+}
+#sidebar nav::-webkit-scrollbar-thumb {
+    min-height: 36px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--primary) 52%, transparent) padding-box;
+    box-shadow: none;
+}
+#sidebar nav::-webkit-scrollbar-thumb:hover {
+    border-width: 0;
+    background: color-mix(in srgb, var(--primary) 82%, var(--success));
+    box-shadow: 0 0 8px color-mix(in srgb, var(--primary) 24%, transparent);
+}
+.ui-page-reveal {
+    opacity: 0;
+    transform: translateY(18px) scale(.992);
+    animation: ui-page-in .6s cubic-bezier(.2,.8,.2,1) forwards;
+    animation-delay: var(--reveal-delay, 0ms);
+}
+@keyframes ui-page-in {
+    to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .ui-page-reveal { opacity: 1; transform: none; animation: none; }
+    .app-card-hover:hover, .app-stat-card:hover, .app-btn:hover, .app-table tbody tr:hover { transform: none; }
 }

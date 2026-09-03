@@ -56,7 +56,7 @@
         <div class="app-stat-card">
             <div class="flex items-start justify-between">
                 <div>
-                    <p class="text-xs font-medium uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">Total HPP</p>
+                    <p class="text-xs font-medium uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">Total HPP <span class="normal-case font-normal">(info)</span></p>
                     <p class="mt-2 text-2xl font-bold text-[#0F172A] dark:text-[#F8FAFC]">Rp {{ number_format($closing->hpp,0,',','.') }}</p>
                 </div>
                 <div class="app-icon bg-slate-100 text-slate-600 dark:bg-[#172033] dark:text-slate-300">
@@ -132,7 +132,7 @@
     <div class="mt-6 rounded-2xl border border-[#E2E8F0] bg-white shadow-sm dark:border-[#253247] dark:bg-[#111827]">
         <div class="p-5 border-b border-[#E2E8F0] dark:border-[#253247]">
             <h2 class="text-lg font-bold text-[#0F172A] dark:text-[#F8FAFC]">Pengeluaran (Expenses)</h2>
-            <p class="text-xs text-[#64748B] mt-1 dark:text-[#94A3B8]">Total: Rp {{ number_format($totalExpense,0,',','.') }}</p>
+            <p class="text-xs text-[#64748B] mt-1 dark:text-[#94A3B8]">Total (semua kategori, termasuk Bahan Baku): Rp {{ number_format($totalExpense,0,',','.') }}</p>
         </div>
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
@@ -205,7 +205,148 @@
         </div>
     </div>
 
-    {{-- SECTION 4: HPP COMPONENT TABLE (Material Bahan Baku) --}}
+    {{-- SECTION 4: STOCK OPNAME (SO) BAHAN BAKU --}}
+    @php
+        $soTotal = $materialRows->sum(
+            fn ($row) => (float) $row['stock_akhir'] * (float) $row['unit_cost']
+        );
+    @endphp
+
+    <div id="stock-opname" class="mt-6 rounded-2xl border border-[#E2E8F0] bg-white shadow-sm dark:border-[#253247] dark:bg-[#111827]">
+        <div class="flex flex-col gap-3 border-b border-[#E2E8F0] p-5 sm:flex-row sm:items-center sm:justify-between dark:border-[#253247]">
+            <div>
+                <h2 class="text-lg font-bold text-[#0F172A] dark:text-[#F8FAFC]">Stock Opname Bahan Baku</h2>
+                <p class="mt-1 text-xs text-[#64748B] dark:text-[#94A3B8]">
+                    Satuan diambil dari Stock Akhir material. Total = Satuan × Harga Manual.
+                </p>
+            </div>
+
+            <div class="rounded-xl bg-[#F8FAFC] px-4 py-3 text-right dark:bg-[#0B1220]">
+                <p class="text-[11px] font-semibold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">Total Nilai SO</p>
+                <p id="so-grand-total" class="mt-1 text-xl font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+                    Rp {{ number_format($soTotal, 0, ',', '.') }}
+                </p>
+            </div>
+        </div>
+
+        <form method="POST" action="{{ route('closing.update-stock-akhir') }}">
+            @csrf
+            <input type="hidden" name="month" value="{{ $closing->month }}">
+            <input type="hidden" name="year" value="{{ $closing->year }}">
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="border-b border-[#E2E8F0] bg-[#F8FAFC] text-left dark:border-[#253247] dark:bg-[#0B1220]">
+                        <tr>
+                            <th class="p-4 font-semibold text-[#64748B] dark:text-[#94A3B8]">Stok Bahan Baku</th>
+                            <th class="p-4 text-right font-semibold text-[#64748B] dark:text-[#94A3B8]">Satuan</th>
+                            <th class="p-4 text-right font-semibold text-[#64748B] dark:text-[#94A3B8]">Harga</th>
+                            <th class="p-4 text-right font-semibold text-[#64748B] dark:text-[#94A3B8]">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse($materialRows as $row)
+                            @php
+                                $stockAkhir = (float) $row['stock_akhir'];
+                                $hargaSo = (float) $row['unit_cost'];
+                                $totalSo = $stockAkhir * $hargaSo;
+                            @endphp
+
+                            <tr class="so-row border-b border-[#E2E8F0] hover:bg-[#F8FAFC] dark:border-[#253247] dark:hover:bg-[#172033]"
+                                data-stock="{{ $stockAkhir }}">
+                                <td class="p-4 font-medium text-[#0F172A] dark:text-[#F8FAFC]">
+                                    {{ $row['material']->name ?? 'N/A' }}
+                                </td>
+                                <td class="p-4 text-right text-[#64748B] dark:text-[#94A3B8]">
+                                    {{ number_format($stockAkhir, 2, ',', '.') }}
+                                    {{ $row['material']->unit ?? '' }}
+                                    <input type="hidden" name="stock_akhir[{{ $row['id'] }}]" value="{{ $stockAkhir }}">
+                                </td>
+                                <td class="p-4 text-right">
+                                    @if(!$closing->is_locked)
+                                        <div class="ml-auto flex w-44 items-center overflow-hidden rounded-xl border border-[#E2E8F0] bg-white focus-within:border-[#2563EB] focus-within:ring-2 focus-within:ring-[#2563EB]/20 dark:border-[#253247] dark:bg-[#111827]">
+                                            <span class="px-3 text-xs font-semibold text-[#64748B] dark:text-[#94A3B8]">Rp</span>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                step="0.01"
+                                                name="harga_komponen[{{ $row['id'] }}]"
+                                                value="{{ $hargaSo }}"
+                                                class="so-price-input w-full border-0 bg-transparent px-3 py-2 text-right text-sm font-semibold text-[#0F172A] outline-none dark:text-[#F8FAFC]"
+                                            >
+                                        </div>
+                                    @else
+                                        <span class="font-medium text-[#0F172A] dark:text-[#F8FAFC]">
+                                            Rp {{ number_format($hargaSo, 0, ',', '.') }}
+                                        </span>
+                                    @endif
+                                </td>
+                                <td class="so-row-total p-4 text-right font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+                                    Rp {{ number_format($totalSo, 0, ',', '.') }}
+                                </td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="4" class="p-8 text-center text-[#94A3B8] dark:text-[#64748B]">
+                                    Belum ada data material. Generate closing terlebih dahulu.
+                                </td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                    <tfoot>
+                        <tr class="border-t-2 border-[#0F172A] bg-[#F8FAFC] dark:border-[#F8FAFC] dark:bg-[#0B1220]">
+                            <td colspan="3" class="p-4 font-bold text-[#0F172A] dark:text-[#F8FAFC]">Total Stock Opname</td>
+                            <td id="so-footer-total" class="p-4 text-right font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+                                Rp {{ number_format($soTotal, 0, ',', '.') }}
+                            </td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+
+            @if(!$closing->is_locked && $materialRows->isNotEmpty())
+                <div class="flex justify-end border-t border-[#E2E8F0] p-4 dark:border-[#253247]">
+                    <button type="submit" class="rounded-xl bg-[#2563EB] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#1D4ED8] dark:bg-[#3B82F6] dark:hover:bg-[#60A5FA]">
+                        Simpan Harga SO
+                    </button>
+                </div>
+            @endif
+        </form>
+    </div>
+
+    @if(!$closing->is_locked)
+        <script>
+            document.addEventListener('DOMContentLoaded', () => {
+                const formatRupiah = (value) =>
+                    'Rp ' + new Intl.NumberFormat('id-ID', {
+                        maximumFractionDigits: 0,
+                    }).format(value);
+
+                const recalculateSo = () => {
+                    let grandTotal = 0;
+
+                    document.querySelectorAll('#stock-opname .so-row').forEach((row) => {
+                        const stock = Number.parseFloat(row.dataset.stock || '0') || 0;
+                        const priceInput = row.querySelector('.so-price-input');
+                        const price = Number.parseFloat(priceInput?.value || '0') || 0;
+                        const total = stock * price;
+
+                        grandTotal += total;
+                        row.querySelector('.so-row-total').textContent = formatRupiah(total);
+                    });
+
+                    document.getElementById('so-grand-total').textContent = formatRupiah(grandTotal);
+                    document.getElementById('so-footer-total').textContent = formatRupiah(grandTotal);
+                };
+
+                document.querySelectorAll('#stock-opname .so-price-input').forEach((input) => {
+                    input.addEventListener('input', recalculateSo);
+                });
+            });
+        </script>
+    @endif
+
+    {{-- SECTION 5: HPP COMPONENT TABLE (Material Bahan Baku) --}}
     @include('closing._material_components', [
         'materialRows' => $materialRows,
         'materialValue' => $materialValue,
@@ -213,13 +354,13 @@
         'hpp' => $hpp,
     ])
 
-    {{-- SECTION 5: HPP PER METER DETAIL --}}
+    {{-- SECTION 6: HPP PER METER DETAIL --}}
     <div class="mt-6 rounded-2xl border border-[#E2E8F0] bg-white shadow-sm dark:border-[#253247] dark:bg-[#111827]">
         <div class="p-5 border-b border-[#E2E8F0] dark:border-[#253247]">
             <h2 class="text-lg font-bold text-[#0F172A] dark:text-[#F8FAFC]">Rincian HPP / Meter</h2>
             <p class="text-xs text-[#64748B] mt-1 dark:text-[#94A3B8]">
                 Hasil Cetak: {{ number_format($hpp['hasilCetak'],2,',','.') }} m
-                (dari total qty invoice)
+                (dari total qty invoice) &middot; <span class="italic">Metrik informasi, tidak memengaruhi Laba/Rugi</span>
             </p>
         </div>
         <div class="overflow-x-auto">
@@ -256,7 +397,7 @@
         </div>
     </div>
 
-    {{-- SECTION 6: MANUAL DATA --}}
+    {{-- SECTION 7: MANUAL DATA --}}
     <div class="mt-6 rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm dark:border-[#253247] dark:bg-[#111827]">
         <p class="text-sm font-semibold text-[#0F172A] mb-4 dark:text-[#F8FAFC]">Data Manual Closing</p>
         @php
@@ -328,26 +469,26 @@
             </div>
             <div class="space-y-2">
                 <div class="flex justify-between text-sm">
-                    <span class="text-[#64748B] dark:text-[#94A3B8]">Total HPP (Bahan + Biaya Tetap)</span>
-                    <span class="font-medium text-[#0F172A] dark:text-[#F8FAFC]">Rp {{ number_format($closing->hpp, 0, ',', '.') }}</span>
-                </div>
-                <div class="flex justify-between text-sm">
-                    <span class="text-[#64748B] dark:text-[#94A3B8]">Total Pengeluaran (Expense)</span>
+                    <span class="text-[#64748B] dark:text-[#94A3B8]">Total Pengeluaran (semua kategori)</span>
                     <span class="font-medium text-[#0F172A] dark:text-[#F8FAFC]">Rp {{ number_format($totalExpense, 0, ',', '.') }}</span>
                 </div>
                 <div class="flex justify-between text-sm">
                     <span class="text-[#64748B] dark:text-[#94A3B8]">Remaining Material</span>
                     <span class="font-medium text-[#0F172A] dark:text-[#F8FAFC]">Rp {{ number_format($remainingMaterial, 0, ',', '.') }}</span>
                 </div>
+                <div class="flex justify-between text-sm">
+                    <span class="text-[#64748B] dark:text-[#94A3B8]">HPP / Meter <span class="text-[10px] italic">(info)</span></span>
+                    <span class="font-medium text-[#0F172A] dark:text-[#F8FAFC]">Rp {{ number_format($closing->hpp_per_meter, 0, ',', '.') }}</span>
+                </div>
                 <div class="flex justify-between text-sm pt-2 border-t border-[#E2E8F0] dark:border-[#253247]">
-                    <span class="font-semibold text-[#0F172A] dark:text-[#F8FAFC]">Total Pengeluaran + HPP</span>
-                    <span class="font-bold text-[#0F172A] dark:text-[#F8FAFC]">Rp {{ number_format($closing->hpp + $totalExpense, 0, ',', '.') }}</span>
+                    <span class="font-semibold text-[#0F172A] dark:text-[#F8FAFC]">Total HPP <span class="text-[10px] font-normal italic">(info, tidak memengaruhi laba)</span></span>
+                    <span class="font-bold text-[#0F172A] dark:text-[#F8FAFC]">Rp {{ number_format($closing->hpp, 0, ',', '.') }}</span>
                 </div>
             </div>
         </div>
         <div class="mt-4 pt-4 border-t-2 border-[#0F172A] dark:border-[#F8FAFC]">
             <div class="flex justify-between items-center">
-                <span class="text-lg font-bold text-[#0F172A] dark:text-[#F8FAFC]">Laba/Rugi Bersih</span>
+                <span class="text-lg font-bold text-[#0F172A] dark:text-[#F8FAFC]">Laba/Rugi Bersih (Pemasukan − Pengeluaran)</span>
                 <span class="text-2xl font-bold {{ $profit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400' }}">
                     Rp {{ number_format($profit, 0, ',', '.') }}
                 </span>

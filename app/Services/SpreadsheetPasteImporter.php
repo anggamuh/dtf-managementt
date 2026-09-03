@@ -4,8 +4,6 @@ namespace App\Services;
 
 use App\Models\Customer;
 use App\Models\Expense;
-use App\Models\Invoice;
-use App\Models\InvoiceItem;
 use App\Models\Material;
 use App\Models\Order;
 use App\Models\Product;
@@ -26,30 +24,59 @@ class SpreadsheetPasteImporter
     public function importIncome(string $text, int $branchId): int
     {
         $rows = $this->rows($text, 7)->filter(fn ($row) => $this->date($row[0] ?? null) && filled($row[1] ?? null) && filled($row[2] ?? null));
-        if ($rows->isEmpty()) throw ValidationException::withMessages(['paste_data' => 'Tidak ditemukan baris pemasukan yang valid. Paste tabel Excel, termasuk kolom tanggal hingga keterangan.']);
+        if ($rows->isEmpty()) {
+            throw ValidationException::withMessages(['paste_data' => 'Tidak ditemukan baris pemasukan yang valid. Paste tabel Excel, termasuk kolom tanggal hingga keterangan.']);
+        }
+
         return DB::transaction(function () use ($rows, $branchId) {
             $count = 0;
             $batch = now()->format('YmdHis');
-            $invoiceSeq = 0;
             $orderSeq = 0;
-            $rows->groupBy(fn ($row) => trim($row[1]).'|'.$this->date($row[0])->format('o-W'))->each(function (Collection $group) use ($branchId, &$count, $batch, &$invoiceSeq, &$orderSeq) {
-                $first = $group->first();
-                $customer = Customer::firstOrCreate(['branch_id' => $branchId, 'name' => trim($first[1])], ['active' => true]);
-                $items = $group->map(function ($row) use ($branchId, $customer) {
-                    $date = $this->date($row[0]);
-                    $qty = $this->number($row[3] ?? '0'); $price = $this->money($row[4] ?? '0'); $total = $this->money($row[5] ?? '0');
-                    if ($qty <= 0 || $total <= 0) throw ValidationException::withMessages(['paste_data' => "Baris {$row[0]} / {$row[1]} memiliki qty atau total tidak valid."]);
-                    $product = Product::firstOrCreate(['branch_id' => $branchId, 'name' => trim($row[2])], ['price' => $price, 'active' => true]);
-                    return compact('qty', 'price', 'total', 'product', 'row', 'date');
-                });
-                $invoiceDate = $items->min('date');
-                $periodStart = $items->min('date');
-                $periodEnd = $items->max('date');
-                $invoiceSeq++;
-                $invoice = Invoice::create(['branch_id' => $branchId, 'customer_id' => $customer->id, 'invoice_number' => 'IMP-'.$batch.'-'.str_pad($invoiceSeq, 4, '0', STR_PAD_LEFT), 'date' => $invoiceDate, 'period_start' => $periodStart, 'period_end' => $periodEnd, 'subtotal' => $items->sum('total'), 'discount' => 0, 'shipping' => 0, 'total' => $items->sum('total'), 'paid' => $items->sum('total'), 'remaining' => 0, 'status' => 'paid']);
-                foreach ($items as $item) { $orderSeq++; $order = Order::create(['branch_id'=>$branchId,'customer_id'=>$customer->id,'order_number'=>'IMP-ORD-'.$batch.'-'.str_pad($orderSeq, 4, '0', STR_PAD_LEFT),'date'=>$item['date'],'product_id'=>$item['product']->id,'product_name'=>$item['product']->name,'qty'=>$item['qty'],'price'=>$item['price'],'subtotal'=>$item['total'],'discount'=>0,'total'=>$item['total'],'status'=>'completed','note'=>trim($item['row'][6] ?? ''),'invoice_id'=>$invoice->id]); InvoiceItem::create(['invoice_id'=>$invoice->id,'product_id'=>$item['product']->id,'description'=>$item['product']->name,'qty'=>$item['qty'],'price'=>$item['price'],'subtotal'=>$item['total']]); }
+
+            foreach ($rows as $row) {
+                $date = $this->date($row[0]);
+                $customer = Customer::firstOrCreate(
+                    ['branch_id' => $branchId, 'name' => trim($row[1])],
+                    ['active' => true]
+                );
+
+                $qty = $this->number($row[3] ?? '0');
+                $price = $this->money($row[4] ?? '0');
+                $total = $this->money($row[5] ?? '0');
+
+                if ($qty <= 0 || $total <= 0) {
+                    throw ValidationException::withMessages(['paste_data' => "Baris {$row[0]} / {$row[1]} memiliki qty atau total tidak valid."]);
+                }
+
+                $product = Product::firstOrCreate(
+                    ['branch_id' => $branchId, 'name' => trim($row[2])],
+                    ['price' => $price, 'active' => true]
+                );
+
+                $orderSeq++;
+
+                // Sengaja TIDAK diisi invoice_id — order ini masuk sebagai "belum
+                // ditagihkan" dan akan muncul di halaman "Buat dari Pesanan" untuk
+                // ditagihkan manual, bukan otomatis dibuatkan invoice seperti sebelumnya.
+                Order::create([
+                    'branch_id' => $branchId,
+                    'customer_id' => $customer->id,
+                    'order_number' => 'IMP-ORD-'.$batch.'-'.str_pad($orderSeq, 4, '0', STR_PAD_LEFT),
+                    'date' => $date,
+                    'product_id' => $product->id,
+                    'product_name' => $product->name,
+                    'qty' => $qty,
+                    'price' => $price,
+                    'subtotal' => $total,
+                    'discount' => 0,
+                    'total' => $total,
+                    'status' => 'completed',
+                    'note' => trim($row[6] ?? ''),
+                ]);
+
                 $count++;
-            });
+            }
+
             return $count;
         });
     }

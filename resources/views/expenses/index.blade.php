@@ -29,14 +29,15 @@
         </div>
 
         {{-- Bulk Actions Bar --}}
-        <div x-show="selected.length > 0" 
+        <div x-show="selected.length > 0"
+             x-cloak
              x-transition:enter="transition ease-out duration-200"
              x-transition:enter-start="opacity-0 -translate-y-2"
              x-transition:enter-end="opacity-100 translate-y-0"
              x-transition:leave="transition ease-in duration-150"
              x-transition:leave-start="opacity-100 translate-y-0"
              x-transition:leave-end="opacity-0 -translate-y-2"
-             class="hidden rounded-xl bg-blue-50 border border-blue-200 px-4 py-3 items-center justify-between">
+             class="flex rounded-xl bg-blue-50 border border-blue-200 px-4 py-3 items-center justify-between">
             <div class="flex items-center gap-3">
                 <span class="text-sm font-medium text-blue-900">
                     <span x-text="selected.length"></span> pengeluaran dipilih
@@ -89,7 +90,7 @@
                 </div>
                 <button type="submit" class="rounded-xl bg-[#0F172A] px-5 py-2.5 text-white text-sm font-medium hover:bg-[#1E293B] transition-all duration-200 shadow-sm dark:bg-[#F8FAFC] dark:text-[#0F172A] dark:hover:bg-white">
                     <svg class="w-4 h-4 inline mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 01-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/>
                     </svg>
                     Filter
                 </button>
@@ -111,7 +112,9 @@
                 <thead class="bg-[#F8FAFC] border-b border-[#E2E8F0] text-left dark:bg-[#0B1220] dark:border-[#253247]">
                     <tr>
                         <th class="p-4 w-12">
-                            <input type="checkbox" 
+                            <input type="checkbox"
+                                   x-ref="selectAll"
+                                   :checked="selected.length > 0 && selected.length === {{ $expenses->count() }}"
                                    @change="toggleAll($el.checked)"
                                    class="h-4 w-4 rounded border-[#CBD5E1] text-[#2563EB] focus:ring-[#2563EB]/20 dark:border-[#334155] dark:bg-[#111827]">
                         </th>
@@ -204,18 +207,17 @@
         <div class="mt-4">
             {{ $expenses->links() }}
         </div>
-    </div>
 
     {{-- Bulk Delete Confirmation Modal --}}
-    <div x-show="showDeleteModal" 
+    <div x-show="showDeleteModal"
+         x-cloak
          x-transition:enter="ease-out duration-300"
          x-transition:enter-start="opacity-0"
          x-transition:enter-end="opacity-100"
          x-transition:leave="ease-in duration-200"
          x-transition:leave-start="opacity-100"
          x-transition:leave-end="opacity-0"
-         class="fixed inset-0 z-50 hidden items-center justify-center p-4"
-         style="display: none;">
+         class="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div @click="showDeleteModal = false" class="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"></div>
         <div x-transition:enter="ease-out duration-300"
              x-transition:enter-start="opacity-0 scale-95"
@@ -257,6 +259,7 @@
                 </form>
             </div>
         </div>
+    </div>
     </div>
 
     @push('scripts')

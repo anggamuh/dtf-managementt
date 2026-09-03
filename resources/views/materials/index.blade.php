@@ -102,7 +102,9 @@
                         </td>
                         <td class="p-4 text-center text-[#64748B] dark:text-[#94A3B8]">{{ $m->minimum_stock }}</td>
                         <td class="p-4 text-right font-medium text-[#0F172A] dark:text-[#F8FAFC]">Rp {{ number_format($m->price,0,',','.') }}</td>
-                        <td class="p-4 text-right font-semibold text-[#0F172A] dark:text-[#F8FAFC]">Rp {{ number_format($m->stock*$m->price,0,',','.') }}</td>
+                      <td class="p-4 text-right font-semibold text-[#0F172A] dark:text-[#F8FAFC]">
+    Rp {{ number_format($m->purchase_value ?? 0, 0, ',', '.') }}
+</td>
                         <td class="p-4 text-[#64748B] dark:text-[#94A3B8]">{{ $m->supplier }}</td>
                         <td class="p-4">
                             <div class="flex items-center justify-center gap-2">

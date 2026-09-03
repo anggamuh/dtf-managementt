@@ -23,13 +23,18 @@ class MaterialPurchaseService
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            $movement = $material->movements()->where('expense_id', $expense->id)->first();
-            $previousQuantity = (float) ($movement?->quantity ?? 0);
-            $stockBeforePurchase = (float) $material->stock - $previousQuantity;
-            $valueBeforePurchase = $stockBeforePurchase * (float) $material->price;
-            $incomingQuantity = (float) $expense->quantity;
-            $purchaseValue = (float) $expense->amount;
+            $movement = $material->movements()
+                ->where('expense_id', $expense->id)
+                ->first();
 
+            $previousQuantity = (float) ($movement?->quantity ?? 0);
+
+            // Kembalikan stok ke kondisi sebelum pembelian ini
+            $stockBeforePurchase = (float) $material->stock - $previousQuantity;
+
+            $incomingQuantity = (float) $expense->quantity;
+
+            // Catat/update pergerakan pembelian
             $material->movements()->updateOrCreate(
                 ['expense_id' => $expense->id],
                 [
@@ -40,26 +45,39 @@ class MaterialPurchaseService
                 ],
             );
 
-            $newStock = $stockBeforePurchase + $incomingQuantity;
-            $weightedPrice = $newStock > 0
-                ? ($valueBeforePurchase + $purchaseValue) / $newStock
-                : 0;
+            // Harga material TIDAK diubah.
+            // Material.price adalah harga standar/master.
 
-            $material->update(['stock' => $newStock, 'price' => $weightedPrice]);
+            $newStock = $stockBeforePurchase + $incomingQuantity;
+
+            $material->update([
+                'stock' => $newStock,
+            ]);
         });
     }
 
     public function remove(Expense $expense): void
     {
-        $movement = $expense->material?->movements()->where('expense_id', $expense->id)->first();
+        $movement = $expense->material?->movements()
+            ->where('expense_id', $expense->id)
+            ->first();
 
         if (! $movement) {
             return;
         }
 
-        DB::transaction(function () use ($expense, $movement) {
-            $material = Material::query()->lockForUpdate()->findOrFail($movement->material_id);
-            $material->update(['stock' => max(0, (float) $material->stock - (float) $movement->quantity)]);
+        DB::transaction(function () use ($movement) {
+            $material = Material::query()
+                ->lockForUpdate()
+                ->findOrFail($movement->material_id);
+
+            $material->update([
+                'stock' => max(
+                    0,
+                    (float) $material->stock - (float) $movement->quantity
+                ),
+            ]);
+
             $movement->delete();
         });
     }

@@ -101,6 +101,10 @@
             </thead>
             <tbody>
                 @forelse($invoices as $i)
+                    {{-- $i->live_total / $i->live_status dihitung ulang dari
+                         orders yang terhubung, bukan dari kolom total/status
+                         yang tersimpan — jadi selalu akurat walau order-nya
+                         diedit belakangan. --}}
                     <tr class="border-b border-[#E2E8F0] hover:bg-[#F8FAFC] transition-colors duration-150 dark:border-[#253247] dark:hover:bg-[#172033]">
                         <td class="p-4 w-10">
                             <input type="checkbox" value="{{ $i->id }}" class="invoice-checkbox rounded border-[#CBD5E1] text-[#2563EB] focus:ring-[#2563EB]/20 dark:border-[#334155] dark:bg-[#111827]">
@@ -116,7 +120,7 @@
                                 <span class="text-[#94A3B8]">&mdash;</span>
                             @endif
                         </td>
-                        <td class="p-4 text-right font-medium text-[#0F172A] dark:text-[#F8FAFC]">Rp {{ number_format($i->total,0,',','.') }}</td>
+                        <td class="p-4 text-right font-medium text-[#0F172A] dark:text-[#F8FAFC]">Rp {{ number_format($i->live_total,0,',','.') }}</td>
                         <td class="p-4 text-right text-[#64748B] dark:text-[#94A3B8]">Rp {{ number_format($i->paid,0,',','.') }}</td>
                         <td class="p-4 text-center">
                             @php
@@ -126,7 +130,7 @@
                                     'draft' => ['label' => 'Belum Bayar', 'class' => 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20'],
                                     'partial' => ['label' => 'Sebagian', 'class' => 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20'],
                                 ];
-                                $status = $statusConfig[$i->status] ?? ['label' => $i->status, 'class' => 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-700/40 dark:text-slate-300 dark:border-slate-600'];
+                                $status = $statusConfig[$i->live_status] ?? ['label' => $i->live_status, 'class' => 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-700/40 dark:text-slate-300 dark:border-slate-600'];
                             @endphp
                             <span class="inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium {{ $status['class'] }}">
                                 {{ $status['label'] }}
