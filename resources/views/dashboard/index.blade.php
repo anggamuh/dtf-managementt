@@ -211,7 +211,7 @@
                         <div class="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-4 dark:border-[#253247] dark:bg-[#0B1220]">
                             <div class="flex items-start justify-between gap-3">
                                 <div class="min-w-0">
-                                    <p class="truncate text-sm font-semibold text-[#0F172A] dark:text-[#F8FAFC]">{{ $expense->description }}</p>
+                                    <p class="truncate text-sm font-semibold text-[#0F172A] dark:text-[#F8FAFC]">{{ $expense->material?->display_name ?? $expense->description }}</p>
                                     <p class="mt-0.5 text-xs text-[#64748B] dark:text-[#94A3B8]">{{ $expense->category }}</p>
                                 </div>
                                 <div class="shrink-0 text-right">

@@ -262,8 +262,7 @@ class ClosingService
         );
 
         $remainingMaterial = $materialRows->sum(
-            fn ($row) =>
-                (float) $row['stock_akhir']
+            fn ($row) => (float) $row['stock_akhir']
                 * (float) $row['unit_cost']
         );
 
@@ -297,8 +296,7 @@ class ClosingService
             'invoices' => $invoices,
 
             'invoicesByCustomer' => $invoices->groupBy(
-                fn ($invoice) =>
-                    $invoice->customer->name ?? '-'
+                fn ($invoice) => $invoice->customer->name ?? '-'
             ),
 
             'expenses' => $expenses,
@@ -395,8 +393,7 @@ class ClosingService
             ->where('branch_id', $branchId)
             ->get()
             ->sum(
-                fn ($material) =>
-                    (float) $material->stock
+                fn ($material) => (float) $material->stock
                     * (float) $material->price
             );
     }
@@ -431,7 +428,9 @@ class ClosingService
             ->all();
 
         $materials = Material::query()
+            ->with('machine')
             ->where('branch_id', $closing->branch_id)
+            ->where('is_active', true)
             ->whereNotIn('id', $existingMaterialIds)
             ->get();
 
@@ -499,7 +498,7 @@ class ClosingService
             ->groupBy('material_id');
 
         $closing->loadMissing(
-            'materials.material'
+            'materials.material.machine'
         );
 
         foreach ($closing->materials as $component) {
@@ -545,13 +544,17 @@ class ClosingService
         ?Closing $closing
     ): Collection {
         $materials = Material::query()
+            ->with('machine')
             ->where('branch_id', $branchId)
+            ->where('is_active', true)
+            ->orderByRaw('CASE WHEN machine_id IS NULL THEN 1 ELSE 0 END')
+            ->orderBy('machine_id')
             ->orderBy('name')
             ->get();
 
         if ($closing) {
             $closing->loadMissing(
-                'materials.material'
+                'materials.material.machine'
             );
 
             $componentSource = $closing->materials;
@@ -630,7 +633,14 @@ class ClosingService
                     'stockValue' => $stockAkhir * $harga,
                 ];
             }
-        );
+        )->sortBy(function ($row) {
+            $material = $row['material'];
+            $machineOrder = $material->machine_id === null
+                ? '1'
+                : '0'.str_pad((string) $material->machine_id, 12, '0', STR_PAD_LEFT);
+
+            return $machineOrder.'|'.mb_strtolower($material->name);
+        })->values();
     }
 
     /**
@@ -807,8 +817,7 @@ class ClosingService
          * Stock Akhir x Harga Manual.
          */
         $remainingMaterial = $closing->materials->sum(
-            fn ($component) =>
-                (float) $component->stock_akhir
+            fn ($component) => (float) $component->stock_akhir
                 * (float) $component->harga_komponen
         );
 
@@ -916,23 +925,20 @@ class ClosingService
                     );
 
                     return [
-                        'nama' =>
-                            $row['material']->name,
+                        'nama' => $row['material']->display_name,
 
-                        'basis' =>
-                            number_format(
-                                (float) $row['usage'],
-                                2,
-                                ',',
-                                '.'
-                            )
-                            . ' '
-                            . $row['material']->unit,
+                        'basis' => number_format(
+                            (float) $row['usage'],
+                            2,
+                            ',',
+                            '.'
+                        )
+                            .' '
+                            .$row['material']->unit,
 
                         'totalHarga' => $totalHarga,
 
-                        'rpMeter' =>
-                            $hasilCetak > 0
+                        'rpMeter' => $hasilCetak > 0
                                 ? $totalHarga / $hasilCetak
                                 : 0,
                     ];
@@ -949,37 +955,33 @@ class ClosingService
             [
                 'key' => 'gaji_karyawan',
                 'nama' => 'Gaji Karyawan',
-                'totalHarga' =>
-                    (float) (
-                        $closing?->gaji_karyawan ?? 0
-                    ),
+                'totalHarga' => (float) (
+                    $closing?->gaji_karyawan ?? 0
+                ),
             ],
 
             [
                 'key' => 'operasional',
                 'nama' => 'Operasional',
-                'totalHarga' =>
-                    (float) (
-                        $closing?->operasional ?? 0
-                    ),
+                'totalHarga' => (float) (
+                    $closing?->operasional ?? 0
+                ),
             ],
 
             [
                 'key' => 'lain_lain',
                 'nama' => 'Lain-lain',
-                'totalHarga' =>
-                    (float) (
-                        $closing?->lain_lain ?? 0
-                    ),
+                'totalHarga' => (float) (
+                    $closing?->lain_lain ?? 0
+                ),
             ],
 
             [
                 'key' => 'teknisi_mesin',
                 'nama' => 'Teknisi Mesin',
-                'totalHarga' =>
-                    (float) (
-                        $closing?->teknisi_mesin ?? 0
-                    ),
+                'totalHarga' => (float) (
+                    $closing?->teknisi_mesin ?? 0
+                ),
             ],
         ];
 
@@ -990,8 +992,7 @@ class ClosingService
                 return $row + [
                     'basis' => 'Otomatis',
 
-                    'rpMeter' =>
-                        $hasilCetak > 0
+                    'rpMeter' => $hasilCetak > 0
                             ? $row['totalHarga']
                                 / $hasilCetak
                             : 0,
@@ -1099,7 +1100,7 @@ class ClosingService
         Carbon $start,
         Carbon $end
     ): Collection {
-        return Expense::query()
+        return Expense::with('material.machine')
             ->where('branch_id', $branchId)
             ->whereBetween('date', [
                 $start->copy()->startOfDay(),
@@ -1123,12 +1124,10 @@ class ClosingService
             ->with('customer')
             ->get()
             ->groupBy(
-                fn ($invoice) =>
-                    $invoice->customer->name ?? '-'
+                fn ($invoice) => $invoice->customer->name ?? '-'
             )
             ->map(
-                fn ($invoices) =>
-                    $invoices->sum('total')
+                fn ($invoices) => $invoices->sum('total')
             )
             ->sortByDesc(
                 fn ($total) => $total
@@ -1151,8 +1150,7 @@ class ClosingService
             ->get()
             ->groupBy('category')
             ->map(
-                fn ($expenses) =>
-                    $expenses->sum('amount')
+                fn ($expenses) => $expenses->sum('amount')
             )
             ->sortByDesc(
                 fn ($total) => $total

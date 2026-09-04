@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\Concerns\ResolvesBranch;
+use App\Models\Branch;
 use App\Models\Expense;
+use App\Models\Machine;
 use App\Models\Material;
 use App\Services\MaterialPurchaseService;
 use Illuminate\Http\Request;
@@ -19,13 +21,24 @@ class ExpenseController extends Controller
     public function index(Request $request)
     {
         $branchId = $this->branchId($request);
-        $expenses = Expense::with('material')
-            ->when($branchId !== 0, fn($q) => $q->where('branch_id', $branchId))
-            ->when($request->search, fn ($query, $search) => $query->where(function ($q) use ($search) {
+        $search = trim((string) $request->input('search', ''));
+        preg_match('/(\d+)\s*head/i', $search, $headMatch);
+        $searchedHeadCount = isset($headMatch[1]) ? (int) $headMatch[1] : null;
+        $baseSearch = trim(preg_replace('/\(?\s*\d+\s*head\s*\)?/i', '', $search));
+        $materialSearch = $searchedHeadCount !== null ? $baseSearch : $search;
+        $expenses = Expense::with('material.machine')
+            ->when($branchId !== 0, fn ($q) => $q->where('branch_id', $branchId))
+            ->when($search, fn ($query) => $query->where(function ($q) use ($search, $materialSearch, $searchedHeadCount) {
                 $q->where('description', 'like', "%{$search}%")
-                  ->orWhere('category', 'like', "%{$search}%")
-                  ->orWhere('payment_method', 'like', "%{$search}%")
-                  ->orWhere('amount', 'like', "%{$search}%");
+                    ->orWhere('category', 'like', "%{$search}%")
+                    ->orWhere('payment_method', 'like', "%{$search}%")
+                    ->orWhere('amount', 'like', "%{$search}%")
+                    ->orWhereHas('material', fn ($materialQuery) => $materialQuery
+                        ->where('name', 'like', "%{$materialSearch}%")
+                        ->when($searchedHeadCount !== null, fn ($machineMaterialQuery) => $machineMaterialQuery->whereHas('machine', fn ($machineQuery) => $machineQuery->where('head_count', $searchedHeadCount)))
+                        ->orWhereHas('machine', fn ($machineQuery) => $machineQuery
+                            ->where('name', 'like', "%{$search}%")
+                            ->orWhere('code', 'like', "%{$search}%")));
             }))
             ->when($request->category, fn ($query, $category) => $query->where('category', $category))
             ->when($request->date_start, fn ($query, $date) => $query->whereDate('date', '>=', $date))
@@ -55,7 +68,7 @@ class ExpenseController extends Controller
 
         DB::transaction(function () use ($data, $purchases, &$expense) {
             $expense = Expense::create($data);
-            $purchases->sync($expense);
+            $purchases->sync($expense, 'Pembelian');
         });
 
         return redirect()->route('expenses.index', ['branch_id' => $expense->branch_id])->with('message', 'Pengeluaran berhasil disimpan.');
@@ -85,7 +98,7 @@ class ExpenseController extends Controller
             // Reverse the old stock effect before calculating the replacement purchase.
             $purchases->remove($expense->load('material'));
             $expense->update($data);
-            $purchases->sync($expense);
+            $purchases->sync($expense, 'Edit pembelian');
         });
 
         return redirect()->route('expenses.index', ['branch_id' => $expense->branch_id])->with('message', 'Pengeluaran berhasil diperbarui.');
@@ -107,8 +120,8 @@ class ExpenseController extends Controller
     {
         $branchId = $this->branchId($request);
         $ids = $request->input('ids', []);
-        
-        $expenses = Expense::whereIn('id', $ids)->when($branchId !== 0, fn($q) => $q->where('branch_id', $branchId))->get();
+
+        $expenses = Expense::whereIn('id', $ids)->when($branchId !== 0, fn ($q) => $q->where('branch_id', $branchId))->get();
 
         DB::transaction(function () use ($expenses, $purchases) {
             foreach ($expenses as $expense) {
@@ -131,18 +144,37 @@ class ExpenseController extends Controller
             'material_id' => ['nullable', 'integer', 'exists:materials,id'],
             'quantity' => ['nullable', 'numeric', 'gt:0'],
             'proof' => ['nullable', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:5120'],
+            'machine_id' => ['nullable', 'integer'],
         ]);
 
         if ($data['category'] === 'Bahan Baku') {
+            $branchId = $this->branchId($request);
+            $hasMachines = Machine::where('branch_id', $branchId)->where('is_active', true)->exists();
             $request->validate([
-                'material_id' => ['required', 'integer', 'exists:materials,id'],
+                'machine_id' => [
+                    $hasMachines ? 'required' : 'nullable',
+                    'integer',
+                    Rule::exists('machines', 'id')->where(fn ($q) => $q
+                        ->where('branch_id', $branchId)
+                        ->where('is_active', true)),
+                ],
+                'material_id' => [
+                    'required',
+                    'integer',
+                    Rule::exists('materials', 'id')->where(fn ($q) => $q
+                        ->where('branch_id', $branchId)
+                        ->where('is_active', true)
+                        ->when($hasMachines, fn ($machineQuery) => $machineQuery->where('machine_id', $request->integer('machine_id')))
+                        ->when(! $hasMachines, fn ($machineQuery) => $machineQuery->whereNull('machine_id'))),
+                ],
                 'quantity' => ['required', 'numeric', 'gt:0'],
             ]);
-            abort_unless(Material::whereKey($data['material_id'])->where('branch_id', $this->branchId($request))->exists(), 422, 'Material harus berasal dari cabang yang aktif.');
         } else {
             $data['material_id'] = null;
             $data['quantity'] = null;
         }
+
+        unset($data['machine_id']);
 
         return $data;
     }
@@ -153,7 +185,8 @@ class ExpenseController extends Controller
             'expense' => $expense,
             'branches' => $this->branches(),
             'categories' => self::CATEGORIES,
-            'materials' => Material::where('branch_id', $expense->branch_id)->orderBy('name')->get(),
+            'materials' => Material::with('machine')->where('branch_id', $expense->branch_id)->where('is_active', true)->orderBy('name')->get(),
+            'machines' => Branch::findOrFail($expense->branch_id)->machines()->where('is_active', true)->orderBy('head_count')->get(),
         ];
     }
 

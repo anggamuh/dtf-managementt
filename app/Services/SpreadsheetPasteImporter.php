@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Customer;
 use App\Models\Expense;
+use App\Models\Machine;
 use App\Models\Material;
 use App\Models\Order;
 use App\Models\Product;
@@ -15,6 +16,8 @@ use Illuminate\Validation\ValidationException;
 class SpreadsheetPasteImporter
 {
     private MaterialPurchaseService $purchases;
+
+    private array $createdMaterials = [];
 
     public function __construct(MaterialPurchaseService $purchases)
     {
@@ -90,35 +93,59 @@ class SpreadsheetPasteImporter
      * - Mengisi material_id dan quantity
      * - Memanggil MaterialPurchaseService::sync() untuk update stok & harga
      */
-    public function importExpenses(string $text, int $branchId): int
+    public function importExpenses(string $text, int $branchId, ?int $machineId = null): int
     {
-        $rows = $this->rows($text, 8)->filter(fn ($row) => $this->date($row[0] ?? null) && filled($row[3] ?? null) && $this->money($row[6] ?? '0') > 0);
-        if ($rows->isEmpty()) throw ValidationException::withMessages(['paste_data' => 'Tidak ditemukan baris pengeluaran yang valid.']);
+        $hasMachines = Machine::where('branch_id', $branchId)->where('is_active', true)->exists();
+        $validMachine = $machineId !== null && Machine::whereKey($machineId)
+            ->where('branch_id', $branchId)
+            ->where('is_active', true)
+            ->exists();
 
-        return DB::transaction(function () use ($rows, $branchId) {
+        if (($hasMachines && ! $validMachine) || (! $hasMachines && $machineId !== null)) {
+            throw ValidationException::withMessages(['machine_id' => 'Mesin harus aktif dan berasal dari cabang yang dipilih.']);
+        }
+
+        $rows = $this->rows($text, 8)->filter(fn ($row) => $this->date($row[0] ?? null) && filled($row[3] ?? null) && $this->money($row[6] ?? '0') > 0);
+        if ($rows->isEmpty()) {
+            throw ValidationException::withMessages(['paste_data' => 'Tidak ditemukan baris pengeluaran yang valid.']);
+        }
+
+        $this->createdMaterials = [];
+
+        return DB::transaction(function () use ($rows, $branchId, $machineId) {
             $count = 0;
 
             foreach ($rows as $row) {
                 $category = $this->category($row[2] ?? '');
                 $materialId = null;
                 $quantity = null;
+                $material = null;
 
                 // Untuk "Bahan Baku": cari atau buat material berdasarkan deskripsi
                 if ($category === 'Bahan Baku') {
-                    $materialName = trim($row[3]);
-                    $material = Material::where('branch_id', $branchId)
-                        ->where('name', $materialName)
+                    $materialName = $this->baseMaterialName($row[3]);
+                    $material = Material::with('machine')->where('branch_id', $branchId)
+                        ->when($machineId, fn ($q) => $q->where('machine_id', $machineId), fn ($q) => $q->whereNull('machine_id'))
+                        ->where('is_active', true)
+                        ->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($materialName)])
                         ->first();
 
                     if (! $material) {
+                        if ($materialName === '') {
+                            throw ValidationException::withMessages(['paste_data' => 'Nama dasar material tidak boleh kosong.']);
+                        }
                         $material = Material::create([
                             'branch_id' => $branchId,
+                            'machine_id' => $machineId,
                             'name' => $materialName,
                             'unit' => 'kg',
                             'stock' => 0,
                             'minimum_stock' => 0,
                             'price' => 0,
+                            'is_active' => true,
                         ]);
+                        $material->load('machine');
+                        $this->createdMaterials[] = $material->display_name;
                     }
 
                     $materialId = $material->id;
@@ -130,7 +157,7 @@ class SpreadsheetPasteImporter
                     'material_id' => $materialId,
                     'date' => $this->date($row[0]),
                     'category' => $category,
-                    'description' => trim($row[3]),
+                    'description' => $material?->display_name ?? trim($row[3]),
                     'amount' => $this->money($row[6]),
                     'quantity' => $quantity,
                     'payment_method' => trim($row[7] ?? '') ?: 'Tunai',
@@ -146,6 +173,20 @@ class SpreadsheetPasteImporter
 
             return $count;
         });
+    }
+
+    public function createdMaterialNames(): array
+    {
+        return array_values(array_unique($this->createdMaterials));
+    }
+
+    private function baseMaterialName(string $name): string
+    {
+        $name = trim(preg_replace('/\s+/', ' ', $name));
+        $name = preg_replace('/\s*\(\s*\d+\s*head\s*\)\s*$/iu', '', $name);
+        $name = preg_replace('/\s+\d+\s*head\s*$/iu', '', $name);
+
+        return trim($name);
     }
 
     private function rows(string $text, int $columns): Collection
@@ -170,9 +211,10 @@ class SpreadsheetPasteImporter
     private function number(string $value): float
     {
         $value = preg_replace('/[^0-9,.-]/', '', $value);
-        if (str_contains($value, ',') && !str_contains($value, '.')) {
+        if (str_contains($value, ',') && ! str_contains($value, '.')) {
             $value = str_replace(',', '.', $value);
         }
+
         return (float) str_replace(',', '', $value);
     }
 
@@ -186,7 +228,7 @@ class SpreadsheetPasteImporter
         return match (strtolower(trim($value))) {
             'pln', 'listrik' => 'Listrik',
             'lain-lain', 'lainnya' => 'Lainnya',
-            default => in_array(trim($value), ['Bahan Baku','Operasional','Transport','ATK','Gaji','Internet'])
+            default => in_array(trim($value), ['Bahan Baku', 'Operasional', 'Transport', 'ATK', 'Gaji', 'Internet'])
                 ? trim($value)
                 : 'Lainnya'
         };

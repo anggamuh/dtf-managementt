@@ -9,13 +9,13 @@
             <h1 class="text-2xl font-bold text-[#0F172A] dark:text-[#F8FAFC] tracking-tight">Material</h1>
             <p class="mt-1 text-sm text-[#64748B] dark:text-[#94A3B8]">Kelola stok bahan baku dan inventori</p>
         </div>
-        <a class="inline-flex items-center gap-2 rounded-xl bg-[#2563EB] px-5 py-2.5 text-white text-sm font-medium hover:bg-[#1D4ED8] transition-all duration-200 shadow-sm hover:shadow-md dark:bg-[#3B82F6] dark:hover:bg-[#60A5FA]"
+        <div class="flex flex-wrap gap-2">@if($machines->isNotEmpty())<a class="app-btn app-btn-secondary" href="{{ route('materials.split.index', ['branch_id' => $branchId]) }}">Pemisahan Material</a>@endif<a class="inline-flex items-center gap-2 rounded-xl bg-[#2563EB] px-5 py-2.5 text-white text-sm font-medium hover:bg-[#1D4ED8] transition-all duration-200 shadow-sm hover:shadow-md dark:bg-[#3B82F6] dark:hover:bg-[#60A5FA]"
            href="{{ route('materials.create', ['branch_id' => $branchId]) }}">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
             </svg>
             Tambah Material
-        </a>
+        </a></div>
     </div>
 
     @if(session('message'))
@@ -61,6 +61,10 @@
         </div>
     </div>
 
+    @if($machines->isNotEmpty())
+    <form class="mt-5 flex flex-col gap-3 rounded-2xl border border-[#E2E8F0] bg-white p-4 dark:border-[#253247] dark:bg-[#111827] sm:flex-row" method="GET"><input type="hidden" name="branch_id" value="{{ $branchId }}"><input class="app-input" type="search" name="search" value="{{ request('search') }}" placeholder="Cari Powder 4 Head..."><select class="app-input sm:max-w-xs" name="machine_id"><option value="">Semua Mesin</option>@foreach($machines as $machine)<option value="{{ $machine->id }}" @selected((string)request('machine_id')===(string)$machine->id)>{{ $machine->name }}</option>@endforeach<option value="unassigned" @selected(request('machine_id')==='unassigned')>Belum Ditentukan</option></select><button class="app-btn app-btn-primary">Filter</button></form>
+    @endif
+
     {{-- Materials Table --}}
     <div class="mt-5 overflow-x-auto rounded-2xl border border-[#E2E8F0] bg-white shadow-sm dark:border-[#253247] dark:bg-[#111827]">
         <table class="w-full text-sm">
@@ -86,7 +90,8 @@
                                     </svg>
                                 </div>
                                 <div>
-                                    <div class="text-sm font-medium text-[#0F172A] dark:text-[#F8FAFC]">{{ $m->name }}</div>
+                                    <div class="text-sm font-medium text-[#0F172A] dark:text-[#F8FAFC]">{{ $m->display_name }}</div>
+                                    @if($machines->isNotEmpty())<span class="mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold {{ $m->machine ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300' }}">{{ $m->machine?->name ?? 'Belum Ditentukan' }}</span>@endif
                                     <div class="text-xs text-[#64748B] dark:text-[#94A3B8]">{{ $m->unit }}</div>
                                 </div>
                             </div>
@@ -122,7 +127,7 @@
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
                                     </svg>
                                 </a>
-                                <form method="POST" action="{{ route('materials.destroy', $m) }}" class="branch-required" onsubmit="event.preventDefault(); showDeleteMaterialConfirmation('{{ $m->name }}', '{{ route('materials.destroy', $m) }}');">
+                                <form method="POST" action="{{ route('materials.destroy', $m) }}" class="branch-required" onsubmit="event.preventDefault(); showDeleteMaterialConfirmation('{{ $m->display_name }}', '{{ route('materials.destroy', $m) }}');">
                                     @csrf
                                     @method('DELETE')
                                     <button type="submit"

@@ -144,7 +144,7 @@
                                     {{ $e->category }}
                                 </span>
                             </td>
-                            <td class="p-4 text-[#0F172A] dark:text-[#F8FAFC]">{{ $e->description }}</td>
+                            <td class="p-4 text-[#0F172A] dark:text-[#F8FAFC]">{{ $e->material?->display_name ?? $e->description }}@if($e->material)<span class="mt-1 block text-xs text-[#64748B] dark:text-[#94A3B8]">{{ $e->description }}</span>@endif</td>
                             <td class="p-4 text-right font-medium text-rose-600 dark:text-rose-400">Rp {{ number_format($e->amount,0,',','.') }}</td>
                             <td class="p-4">
                                 <span class="inline-flex rounded-lg bg-[#F1F5F9] px-2.5 py-1 text-xs font-medium text-[#0F172A] dark:bg-[#172033] dark:text-[#F8FAFC]">

@@ -29,7 +29,7 @@ class ClosingController extends Controller
         $branchId = $this->branchId($r);
 
         $month = (int) $r->input('month', now()->month);
-        $year  = (int) $r->input('year', now()->year);
+        $year = (int) $r->input('year', now()->year);
 
         /*
          * Periode closing.
@@ -436,7 +436,7 @@ class ClosingController extends Controller
         $month = (int) $closing->month;
         $year = (int) $closing->year;
 
-        $closing->loadMissing('materials.material');
+        $closing->loadMissing('materials.material.machine');
 
         $start = $closing->period_start?->copy()
             ?? Carbon::create(
@@ -587,7 +587,7 @@ class ClosingController extends Controller
                  * BOM UTF-8 agar Excel membaca karakter
                  * Indonesia dengan benar.
                  */
-                fputs(
+                fwrite(
                     $handle,
                     "\xEF\xBB\xBF"
                 );
@@ -606,7 +606,7 @@ class ClosingController extends Controller
                     [
                         "Cabang: {$branch->name}",
                         'Periode: '
-                        . Carbon::create(
+                        .Carbon::create(
                             $year,
                             $month,
                             1
@@ -739,7 +739,7 @@ class ClosingController extends Controller
                             [
                                 $expense->date->format('d/m/Y'),
                                 $expense->category,
-                                $expense->description,
+                                $expense->material?->display_name ?? $expense->description,
                                 $expense->amount,
                                 $expense->payment_method,
                             ],
@@ -767,6 +767,7 @@ class ClosingController extends Controller
                     $handle,
                     [
                         'Material',
+                        'Mesin',
                         'Satuan',
                         'Stok Awal',
                         'Pembelian',
@@ -787,7 +788,8 @@ class ClosingController extends Controller
                         fputcsv(
                             $handle,
                             [
-                                $material['material']->name ?? 'N/A',
+                                $material['material']->display_name ?? 'N/A',
+                                $material['material']->machine?->name ?? '',
                                 $material['material']->unit ?? '',
                                 $material['stock_awal'] ?? 0,
                                 $material['purchase_value'] ?? 0,

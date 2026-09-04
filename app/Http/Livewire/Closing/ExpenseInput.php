@@ -2,19 +2,26 @@
 
 namespace App\Http\Livewire\Closing;
 
-use Livewire\Component;
 use App\Models\Expense;
+use App\Models\Machine;
 use App\Models\Material;
 use App\Services\MaterialPurchaseService;
 use Illuminate\Support\Facades\DB;
+use Livewire\Component;
 
 class ExpenseInput extends Component
 {
     public $rows = [];
+
     public $pasteData = '';
+
     public $branchId;
+
     public $month;
+
     public $year;
+
+    public $machineId;
 
     protected $listeners = ['refreshExpense' => 'refreshComponent'];
 
@@ -24,7 +31,7 @@ class ExpenseInput extends Component
         $this->month = $month;
         $this->year = $year;
         $this->rows = [
-            ['date' => '', 'bon_number' => '', 'category' => '', 'description' => '', 'qty' => '', 'price' => '', 'total' => '', 'note' => '']
+            ['date' => '', 'bon_number' => '', 'category' => '', 'description' => '', 'qty' => '', 'price' => '', 'total' => '', 'note' => ''],
         ];
     }
 
@@ -80,12 +87,21 @@ class ExpenseInput extends Component
 
     public function save()
     {
+        $hasMachines = Machine::where('branch_id', $this->branchId)->where('is_active', true)->exists();
         $this->validate([
             'rows.*.date' => 'required|date',
             'rows.*.category' => 'required|string',
             'rows.*.description' => 'required|string',
             'rows.*.total' => 'required|numeric',
             'rows.*.qty' => 'nullable|numeric',
+            'machineId' => [
+                $hasMachines ? 'required' : 'nullable',
+                function ($attribute, $value, $fail) use ($hasMachines) {
+                    if ($hasMachines && ! Machine::whereKey($value)->where('branch_id', $this->branchId)->where('is_active', true)->exists()) {
+                        $fail('Mesin harus aktif dan berasal dari cabang ini.');
+                    }
+                },
+            ],
         ]);
 
         $purchases = app(MaterialPurchaseService::class);
@@ -97,24 +113,30 @@ class ExpenseInput extends Component
 
                 // Jika kategori "Bahan Baku", cari Material berdasarkan deskripsi
                 if ($row['category'] === 'Bahan Baku') {
+                    $materialName = trim(preg_replace('/\s+/', ' ', preg_replace('/\s*\(\s*\d+\s*head\s*\)\s*$/iu', '', $row['description'])));
                     $material = Material::where('branch_id', $this->branchId)
-                        ->where('name', $row['description'])
+                        ->when($this->machineId, fn ($q) => $q->where('machine_id', $this->machineId), fn ($q) => $q->whereNull('machine_id'))
+                        ->where('is_active', true)
+                        ->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($materialName)])
                         ->first();
 
                     // Jika material tidak ditemukan, buat baru
                     if (! $material) {
                         $material = Material::create([
                             'branch_id' => $this->branchId,
-                            'name' => $row['description'],
+                            'machine_id' => $this->machineId,
+                            'name' => $materialName,
                             'unit' => 'kg',
                             'stock' => 0,
                             'minimum_stock' => 0,
                             'price' => 0,
+                            'is_active' => true,
                         ]);
                     }
 
                     $materialId = $material->id;
                     $quantity = (float) ($row['qty'] ?? 1);
+                    $row['description'] = $material->loadMissing('machine')->display_name;
                 }
 
                 $expense = Expense::create([
@@ -141,12 +163,14 @@ class ExpenseInput extends Component
     public function refreshComponent()
     {
         $this->rows = [
-            ['date' => '', 'bon_number' => '', 'category' => '', 'description' => '', 'qty' => '', 'price' => '', 'total' => '', 'note' => '']
+            ['date' => '', 'bon_number' => '', 'category' => '', 'description' => '', 'qty' => '', 'price' => '', 'total' => '', 'note' => ''],
         ];
     }
 
     public function render()
     {
-        return view('livewire.closing.expense-input');
+        return view('livewire.closing.expense-input', [
+            'machines' => Machine::where('branch_id', $this->branchId)->where('is_active', true)->orderBy('head_count')->get(),
+        ]);
     }
 }

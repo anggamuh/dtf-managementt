@@ -1,5 +1,7 @@
 @php
     $totalPembelian = $materialRows->sum('purchase_value');
+    $showMachineGroups = $materialRows->contains(fn ($row) => $row['material']->machine_id !== null);
+    $lastMachineGroup = null;
 @endphp
 
 <div class="mt-6 overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
@@ -43,11 +45,17 @@
                 @forelse($materialRows as $row)
                     @php
                         $componentId = $row['id'] ?? $row['material']->id;
+                        $machineGroup = $row['material']->machine?->name ?? 'Belum Ditentukan';
                     @endphp
+
+                    @if($showMachineGroups && $lastMachineGroup !== $machineGroup)
+                        @php $lastMachineGroup = $machineGroup; $machineSubtotal = $materialRows->filter(fn ($item) => ($item['material']->machine?->name ?? 'Belum Ditentukan') === $machineGroup)->sum('purchase_value'); @endphp
+                        <tr class="bg-blue-50 dark:bg-blue-500/10"><td colspan="6" class="p-3 text-xs font-bold uppercase tracking-wide text-blue-700 dark:text-blue-300">{{ $machineGroup }} <span class="float-right normal-case">Subtotal pembelian: Rp{{ number_format($machineSubtotal, 0, ',', '.') }}</span></td></tr>
+                    @endif
 
                     <tr class="border-b border-slate-100 hover:bg-slate-50/50 dark:border-slate-700 dark:hover:bg-slate-900/50">
                         <td class="p-3 font-medium text-slate-800 dark:text-white">
-                            {{ $row['material']->name }}
+                            {{ $row['material']->display_name }}
                             <span class="text-xs text-slate-500 dark:text-slate-400">
                                 {{ $row['material']->unit }}
                             </span>

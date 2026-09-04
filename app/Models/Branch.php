@@ -35,6 +35,11 @@ class Branch extends Model
         return $this->hasMany(Material::class);
     }
 
+    public function machines(): HasMany
+    {
+        return $this->hasMany(Machine::class);
+    }
+
     public function invoices(): HasMany
     {
         return $this->hasMany(Invoice::class);

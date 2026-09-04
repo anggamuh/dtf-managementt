@@ -40,10 +40,10 @@ class DashboardController extends Controller
 
         $start = $selectedMonth->copy()->startOfMonth();
         $end = $selectedMonth->copy()->endOfMonth();
-        
+
         $income = $this->calculateIncome($branchId, $start, $end, $isAllBranches);
         $expense = $this->calculateExpense($branchId, $start, $end, $isAllBranches);
-        
+
         // Monthly trend for last 6 months ending in selected month
         $monthly = collect(range(5, 0))->map(function ($offset) use ($branchId, $isAllBranches, $selectedMonth) {
             $month = $selectedMonth->copy()->subMonths($offset);
@@ -51,11 +51,12 @@ class DashboardController extends Controller
             $monthEnd = $month->copy()->endOfMonth();
             $monthIncome = $this->calculateIncome($branchId, $monthStart, $monthEnd, $isAllBranches);
             $monthExpense = $this->calculateExpense($branchId, $monthStart, $monthEnd, $isAllBranches);
+
             return [
-                'label' => $month->translatedFormat('M'), 
-                'income' => (float) $monthIncome, 
-                'expense' => (float) $monthExpense, 
-                'profit' => (float) ($monthIncome - $monthExpense)
+                'label' => $month->translatedFormat('M'),
+                'income' => (float) $monthIncome,
+                'expense' => (float) $monthExpense,
+                'profit' => (float) ($monthIncome - $monthExpense),
             ];
         })->toArray();
 
@@ -75,7 +76,7 @@ class DashboardController extends Controller
             ? $recentOrdersQuery->latest('date')->take(5)->get()
             : $recentOrdersQuery->where('branch_id', $branchId)->latest('date')->take(5)->get();
         $recentInvoices = $isAllBranches ? Invoice::with('customer')->latest('date')->take(5)->get() : Invoice::with('customer')->where('branch_id', $branchId)->latest('date')->take(5)->get();
-        $recentExpenses = $isAllBranches ? Expense::latest('date')->take(5)->get() : Expense::where('branch_id', $branchId)->latest('date')->take(5)->get();
+        $recentExpenses = $isAllBranches ? Expense::with('material.machine')->latest('date')->take(5)->get() : Expense::with('material.machine')->where('branch_id', $branchId)->latest('date')->take(5)->get();
 
         return view('dashboard.index', compact('monthly', 'expenseByCategory', 'recentOrders', 'recentInvoices', 'recentExpenses') + [
             'branches' => $this->branches(),
@@ -92,7 +93,7 @@ class DashboardController extends Controller
             'customerCount' => $customerCount,
             'orderCount' => $orderCount,
             'materialCount' => $materialCount,
-            'lowMaterials' => $isAllBranches ? Material::whereColumn('stock', '<=', 'minimum_stock')->orderBy('stock')->get() : Material::where('branch_id', $branchId)->whereColumn('stock', '<=', 'minimum_stock')->orderBy('stock')->get(),
+            'lowMaterials' => $isAllBranches ? Material::with('machine')->where('is_active', true)->whereColumn('stock', '<=', 'minimum_stock')->orderBy('stock')->get() : Material::with('machine')->where('is_active', true)->where('branch_id', $branchId)->whereColumn('stock', '<=', 'minimum_stock')->orderBy('stock')->get(),
         ]);
     }
 
@@ -105,12 +106,14 @@ class DashboardController extends Controller
     private function calculateIncome($branchId, Carbon $start, ?Carbon $end, bool $isAllBranches): float
     {
         $query = Order::productionReady()->where('status', '!=', 'cancelled')->whereBetween('date', [$start, $end ?? $start]);
+
         return (float) ($isAllBranches ? $query->sum('total') : $query->where('branch_id', $branchId)->sum('total'));
     }
 
     private function calculateExpense($branchId, Carbon $start, ?Carbon $end, bool $isAllBranches): float
     {
         $query = Expense::whereBetween('date', [$start, $end ?? $start]);
+
         return (float) ($isAllBranches ? $query->sum('amount') : $query->where('branch_id', $branchId)->sum('amount'));
     }
 
@@ -121,9 +124,9 @@ class DashboardController extends Controller
             ->groupBy('category')
             ->orderByDesc('total')
             ->take(5);
-            
+
         $results = $isAllBranches ? $query->get() : $query->where('branch_id', $branchId)->get();
-        
+
         return $results->map(fn ($item) => (object) [
             'category' => $item->category,
             'total' => (float) $item->total,

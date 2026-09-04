@@ -1,5 +1,7 @@
 @php
     $totalPembelian = $materialRows->sum('purchase_value');
+    $showMachineGroups = $materialRows->contains(fn ($row) => $row['material']->machine_id !== null);
+    $lastMachineGroup = null;
 @endphp
 <!doctype html>
 <html>
@@ -48,8 +50,13 @@
             <th class="right">Stock Akhir</th>
         </tr>
         @foreach($materialRows as $row)
+            @php $machineGroup = $row['material']->machine?->name ?? 'Belum Ditentukan'; @endphp
+            @if($showMachineGroups && $lastMachineGroup !== $machineGroup)
+                @php $lastMachineGroup = $machineGroup; $machineSubtotal = $materialRows->filter(fn ($item) => ($item['material']->machine?->name ?? 'Belum Ditentukan') === $machineGroup)->sum('purchase_value'); @endphp
+                <tr><td colspan="6" class="bold">{{ strtoupper($machineGroup) }} — Subtotal Pembelian: Rp {{ number_format($machineSubtotal,0,',','.') }}</td></tr>
+            @endif
             <tr>
-                <td>{{ $row['material']->name }} ({{ $row['material']->unit }})</td>
+                <td>{{ $row['material']->display_name }} ({{ $row['material']->unit }})</td>
                 <td class="right">{{ number_format($row['stock_awal'],2,',','.') }}</td>
                 <td class="right">Rp {{ number_format($row['unit_cost'],0,',','.') }}</td>
                 <td class="right">{{ number_format($row['incoming_quantity'],2,',','.') }}</td>
@@ -97,4 +104,3 @@
     </table>
 </body>
 </html>
-

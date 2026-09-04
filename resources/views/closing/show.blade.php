@@ -154,7 +154,7 @@
                                     {{ $expense->category }}
                                 </span>
                             </td>
-                            <td class="p-3 text-[#0F172A] font-medium dark:text-[#F8FAFC]">{{ $expense->description }}</td>
+                            <td class="p-3 text-[#0F172A] font-medium dark:text-[#F8FAFC]">{{ $expense->material?->display_name ?? $expense->description }}</td>
                             <td class="p-3 text-right font-semibold text-[#0F172A] dark:text-[#F8FAFC]">Rp {{ number_format($expense->amount,0,',','.') }}</td>
                             <td class="p-3 text-[#64748B] dark:text-[#94A3B8]">{{ $expense->payment_method ?? '-' }}</td>
                         </tr>
@@ -255,7 +255,7 @@
                             <tr class="so-row border-b border-[#E2E8F0] hover:bg-[#F8FAFC] dark:border-[#253247] dark:hover:bg-[#172033]"
                                 data-stock="{{ $stockAkhir }}">
                                 <td class="p-4 font-medium text-[#0F172A] dark:text-[#F8FAFC]">
-                                    {{ $row['material']->name ?? 'N/A' }}
+                                    {{ $row['material']->display_name ?? 'N/A' }}
                                 </td>
                                 <td class="p-4 text-right text-[#64748B] dark:text-[#94A3B8]">
                                     {{ number_format($stockAkhir, 2, ',', '.') }}

@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\DB;
 
 class MaterialPurchaseService
 {
-    public function sync(Expense $expense): void
+    public function sync(Expense $expense, string $action = 'Pembelian'): void
     {
         if (! $expense->isMaterialPurchase()) {
             $this->remove($expense);
@@ -16,11 +16,12 @@ class MaterialPurchaseService
             return;
         }
 
-        DB::transaction(function () use ($expense) {
+        DB::transaction(function () use ($expense, $action) {
             $material = Material::query()
                 ->whereKey($expense->material_id)
                 ->where('branch_id', $expense->branch_id)
                 ->lockForUpdate()
+                ->with('machine')
                 ->firstOrFail();
 
             $movement = $material->movements()
@@ -41,7 +42,7 @@ class MaterialPurchaseService
                     'date' => $expense->date,
                     'type' => 'purchase',
                     'quantity' => $incomingQuantity,
-                    'note' => $expense->description,
+                    'note' => "{$action} {$material->display_name}",
                 ],
             );
 
@@ -72,10 +73,7 @@ class MaterialPurchaseService
                 ->findOrFail($movement->material_id);
 
             $material->update([
-                'stock' => max(
-                    0,
-                    (float) $material->stock - (float) $movement->quantity
-                ),
+                'stock' => (float) $material->stock - (float) $movement->quantity,
             ]);
 
             $movement->delete();

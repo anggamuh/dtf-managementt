@@ -2,6 +2,10 @@
     <div class="bg-white rounded-lg shadow p-6 dark:bg-slate-800 dark:text-slate-200">
         <h3 class="text-lg font-medium text-gray-900 mb-4 dark:text-slate-100">Input Pengeluaran</h3>
 
+        @if($machines->isNotEmpty())
+            <div class="mb-4"><label class="mb-2 block text-sm font-medium text-gray-700 dark:text-slate-200">Mesin untuk Bahan Baku</label><select wire:model="machineId" class="w-full rounded-md border-gray-300 dark:border-slate-700 dark:bg-slate-900 dark:text-white"><option value="">Pilih mesin</option>@foreach($machines as $machine)<option value="{{ $machine->id }}">{{ $machine->name }}</option>@endforeach</select>@error('machineId')<span class="text-xs text-red-500">{{ $message }}</span>@enderror</div>
+        @endif
+
         <div class="mb-4">
             <label class="block text-sm font-medium text-gray-700 mb-2 dark:text-slate-200">Paste dari Excel</label>
             <textarea wire:model="pasteData" class="w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500" rows="3" placeholder="Copy dari Excel dan paste di sini..."></textarea>

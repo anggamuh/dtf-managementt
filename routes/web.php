@@ -1,24 +1,25 @@
 <?php
 
 use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\ClosingController;
 use App\Http\Controllers\Customer\DashboardController as CustomerDashboardController;
+use App\Http\Controllers\Customer\InvoiceController as CustomerInvoiceController;
 use App\Http\Controllers\Customer\OrderController as CustomerOrderController;
 use App\Http\Controllers\Customer\PaymentController as CustomerPaymentController;
-use App\Http\Controllers\Customer\InvoiceController as CustomerInvoiceController;
-use App\Http\Controllers\MidtransWebhookController;
-use App\Http\Controllers\NotificationController;
-use App\Http\Controllers\OrderDesignController;
-use App\Http\Controllers\PaymentAccountController;
-use App\Http\Controllers\PaymentVerificationController;
-use App\Http\Controllers\PaymentRefundController;
-use App\Http\Controllers\ClosingController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\LedgerController;
 use App\Http\Controllers\MaterialController;
+use App\Http\Controllers\MaterialSplitController;
+use App\Http\Controllers\MidtransWebhookController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OrderController;
+use App\Http\Controllers\OrderDesignController;
 use App\Http\Controllers\OrderSummaryController;
+use App\Http\Controllers\PaymentAccountController;
+use App\Http\Controllers\PaymentRefundController;
+use App\Http\Controllers\PaymentVerificationController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\SpreadsheetImportController;
@@ -35,30 +36,30 @@ Route::middleware('guest')->group(function () {
     Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:3,1')->name('register.store');
 });
 Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth')->name('logout');
-Route::get('/notification-links/{notificationId}', [NotificationController::class, 'visit'])->middleware(['auth','throttle:60,1'])->name('notifications.visit');
+Route::get('/notification-links/{notificationId}', [NotificationController::class, 'visit'])->middleware(['auth', 'throttle:60,1'])->name('notifications.visit');
 Route::post('/webhooks/midtrans', MidtransWebhookController::class)->middleware('throttle:120,1')->name('webhooks.midtrans');
 
-Route::prefix('customer')->name('customer.')->middleware(['auth','role:Customer'])->group(function () {
-        Route::get('/dashboard', CustomerDashboardController::class)->name('dashboard');
-        Route::get('/orders', [CustomerOrderController::class, 'index'])->name('orders.index');
-        Route::get('/orders/create', [CustomerOrderController::class, 'create'])->name('orders.create');
-        Route::post('/orders', [CustomerOrderController::class, 'store'])->middleware('throttle:10,1')->name('orders.store');
-        Route::get('/orders/{order}', [CustomerOrderController::class, 'show'])->name('orders.show');
-        Route::get('/orders/{order}/design', [CustomerOrderController::class, 'download'])->name('orders.design');
-        Route::patch('/orders/{order}/cancel', [CustomerOrderController::class, 'cancel'])->name('orders.cancel');
-        Route::post('/orders/{order}/snap', [CustomerPaymentController::class, 'snap'])->middleware('throttle:10,1')->name('orders.snap');
-        Route::post('/orders/{order}/payment-confirmation', [CustomerPaymentController::class, 'confirm'])->middleware('throttle:5,1')->name('orders.payment-confirmation');
-        Route::post('/orders/{order}/design-revision',[OrderDesignController::class,'customerRevision'])->middleware('throttle:5,1')->name('orders.design-revision');
-        Route::patch('/orders/{order}/design-approve',[OrderDesignController::class,'approve'])->name('orders.design-approve');
-        Route::patch('/orders/{order}/design-request-revision',[OrderDesignController::class,'requestRevision'])->name('orders.design-request-revision');
-        Route::get('/orders/{order}/design-files/{file}',[OrderDesignController::class,'download'])->name('orders.design-files.download');
-        Route::get('/notifications', [CustomerDashboardController::class, 'notifications'])->name('notifications');
-        Route::get('/profile', [CustomerDashboardController::class, 'profile'])->name('profile');
-        Route::get('/invoices/{invoice}',[CustomerInvoiceController::class,'show'])->name('invoices.show');
-        Route::get('/invoices/{invoice}/pdf',[CustomerInvoiceController::class,'pdf'])->name('invoices.pdf');
+Route::prefix('customer')->name('customer.')->middleware(['auth', 'role:Customer'])->group(function () {
+    Route::get('/dashboard', CustomerDashboardController::class)->name('dashboard');
+    Route::get('/orders', [CustomerOrderController::class, 'index'])->name('orders.index');
+    Route::get('/orders/create', [CustomerOrderController::class, 'create'])->name('orders.create');
+    Route::post('/orders', [CustomerOrderController::class, 'store'])->middleware('throttle:10,1')->name('orders.store');
+    Route::get('/orders/{order}', [CustomerOrderController::class, 'show'])->name('orders.show');
+    Route::get('/orders/{order}/design', [CustomerOrderController::class, 'download'])->name('orders.design');
+    Route::patch('/orders/{order}/cancel', [CustomerOrderController::class, 'cancel'])->name('orders.cancel');
+    Route::post('/orders/{order}/snap', [CustomerPaymentController::class, 'snap'])->middleware('throttle:10,1')->name('orders.snap');
+    Route::post('/orders/{order}/payment-confirmation', [CustomerPaymentController::class, 'confirm'])->middleware('throttle:5,1')->name('orders.payment-confirmation');
+    Route::post('/orders/{order}/design-revision', [OrderDesignController::class, 'customerRevision'])->middleware('throttle:5,1')->name('orders.design-revision');
+    Route::patch('/orders/{order}/design-approve', [OrderDesignController::class, 'approve'])->name('orders.design-approve');
+    Route::patch('/orders/{order}/design-request-revision', [OrderDesignController::class, 'requestRevision'])->name('orders.design-request-revision');
+    Route::get('/orders/{order}/design-files/{file}', [OrderDesignController::class, 'download'])->name('orders.design-files.download');
+    Route::get('/notifications', [CustomerDashboardController::class, 'notifications'])->name('notifications');
+    Route::get('/profile', [CustomerDashboardController::class, 'profile'])->name('profile');
+    Route::get('/invoices/{invoice}', [CustomerInvoiceController::class, 'show'])->name('invoices.show');
+    Route::get('/invoices/{invoice}/pdf', [CustomerInvoiceController::class, 'pdf'])->name('invoices.pdf');
 });
 
-Route::middleware(['auth','staff'])->group(function () {
+Route::middleware(['auth', 'staff'])->group(function () {
     /*
     |--------------------------------------------------------------------------
     | AUTH
@@ -73,16 +74,16 @@ Route::middleware(['auth','staff'])->group(function () {
 
     Route::get('/dashboard', DashboardController::class)
         ->name('dashboard');
-    Route::get('/notifications', fn () => view('notifications.index', ['notifications'=>auth()->user()->notifications()->latest()->paginate(20)]))->name('notifications.index');
-    Route::middleware('role:Super Admin|Owner|Admin EPUL|Admin RAPLY')->group(function(){
-        Route::resource('payment-accounts',PaymentAccountController::class)->only(['index','store','update']);
-        Route::get('payment-verifications',[PaymentVerificationController::class,'index'])->name('payment-verifications.index');
-        Route::get('payment-confirmations/{confirmation}/proof',[PaymentVerificationController::class,'proof'])->name('payment-confirmations.proof');
-        Route::patch('payment-confirmations/{confirmation}/approve',[PaymentVerificationController::class,'approve'])->middleware('throttle:30,1')->name('payment-confirmations.approve');
-        Route::patch('payment-confirmations/{confirmation}/reject',[PaymentVerificationController::class,'reject'])->middleware('throttle:30,1')->name('payment-confirmations.reject');
+    Route::get('/notifications', fn () => view('notifications.index', ['notifications' => auth()->user()->notifications()->latest()->paginate(20)]))->name('notifications.index');
+    Route::middleware('role:Super Admin|Owner|Admin EPUL|Admin RAPLY')->group(function () {
+        Route::resource('payment-accounts', PaymentAccountController::class)->only(['index', 'store', 'update']);
+        Route::get('payment-verifications', [PaymentVerificationController::class, 'index'])->name('payment-verifications.index');
+        Route::get('payment-confirmations/{confirmation}/proof', [PaymentVerificationController::class, 'proof'])->name('payment-confirmations.proof');
+        Route::patch('payment-confirmations/{confirmation}/approve', [PaymentVerificationController::class, 'approve'])->middleware('throttle:30,1')->name('payment-confirmations.approve');
+        Route::patch('payment-confirmations/{confirmation}/reject', [PaymentVerificationController::class, 'reject'])->middleware('throttle:30,1')->name('payment-confirmations.reject');
     });
-    Route::post('orders/{order}/refunds',[PaymentRefundController::class,'store'])
-        ->middleware(['role:Super Admin|Owner|Finance','throttle:10,1'])
+    Route::post('orders/{order}/refunds', [PaymentRefundController::class, 'store'])
+        ->middleware(['role:Super Admin|Owner|Finance', 'throttle:10,1'])
         ->name('orders.refunds.store');
 
     /*
@@ -121,8 +122,8 @@ Route::middleware(['auth','staff'])->group(function () {
     Route::get('orders/{order}/customer-detail', [OrderController::class, 'customerDetail'])->name('orders.customer-detail');
     Route::patch('orders/{order}/customer-status', [OrderController::class, 'updateCustomerStatus'])->name('orders.customer-status');
     Route::get('orders/{order}/design', [OrderController::class, 'downloadDesign'])->name('orders.design');
-    Route::post('orders/{order}/design-preview',[OrderDesignController::class,'adminPreview'])->middleware('throttle:10,1')->name('orders.design-preview');
-    Route::get('orders/{order}/design-files/{file}',[OrderDesignController::class,'download'])->name('orders.design-files.download');
+    Route::post('orders/{order}/design-preview', [OrderDesignController::class, 'adminPreview'])->middleware('throttle:10,1')->name('orders.design-preview');
+    Route::get('orders/{order}/design-files/{file}', [OrderDesignController::class, 'download'])->name('orders.design-files.download');
 
     /*
     |--------------------------------------------------------------------------
@@ -201,6 +202,11 @@ Route::middleware(['auth','staff'])->group(function () {
         'materials/{material}/opname',
         [MaterialController::class, 'opname']
     )->name('materials.opname');
+
+    Route::get('materials-split', [MaterialSplitController::class, 'index'])
+        ->name('materials.split.index');
+    Route::post('materials-split/{material}', [MaterialSplitController::class, 'store'])
+        ->name('materials.split.store');
 
     /*
     |--------------------------------------------------------------------------
