@@ -1,4 +1,3 @@
-
 @php
     $nav = [
         'dashboard' => ['label' => 'Dashboard', 'icon' => 'o-home'],
@@ -15,10 +14,27 @@
     $currentRoute = request()->route()->getName() ?? '';
     $user = auth()->user();
     $userRole = $user?->roles->first()?->name ?? '';
-    if ($user?->hasAnyRole(['Super Admin','Owner','Admin EPUL','Admin RAPLY'])) {
-        $nav['payment-verifications.index'] = ['label'=>'Verifikasi Pembayaran','icon'=>'o-shopping-cart'];
-        $nav['payment-accounts.index'] = ['label'=>'Rekening Pembayaran','icon'=>'o-document-text'];
-    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | FITUR PEMBAYARAN - NONAKTIF SEMENTARA
+    |--------------------------------------------------------------------------
+    | Uncomment bagian ini jika fitur Verifikasi Pembayaran
+    | dan Rekening Pembayaran sudah ingin digunakan.
+    |--------------------------------------------------------------------------
+    */
+
+    // if ($user?->hasAnyRole(['Super Admin', 'Owner', 'Admin EPUL', 'Admin RAPLY'])) {
+    //     $nav['payment-verifications.index'] = [
+    //         'label' => 'Verifikasi Pembayaran',
+    //         'icon' => 'o-shopping-cart'
+    //     ];
+    //
+    //     $nav['payment-accounts.index'] = [
+    //         'label' => 'Rekening Pembayaran',
+    //         'icon' => 'o-document-text'
+    //     ];
+    // }
 @endphp
 
 {{-- Sidebar --}}
@@ -96,8 +112,19 @@
 
                         'orders.weekly-closing' =>
                             $currentRoute === 'orders.weekly-closing',
-                        'payment-verifications.index' => str_starts_with($currentRoute,'payment-verifications.') || str_starts_with($currentRoute,'payment-confirmations.'),
-                        'payment-accounts.index' => str_starts_with($currentRoute,'payment-accounts.'),
+
+                        /*
+                        |--------------------------------------------------------------------------
+                        | FITUR PEMBAYARAN - NONAKTIF SEMENTARA
+                        |--------------------------------------------------------------------------
+                        */
+
+                        // 'payment-verifications.index' =>
+                        //     str_starts_with($currentRoute, 'payment-verifications.')
+                        //     || str_starts_with($currentRoute, 'payment-confirmations.'),
+
+                        // 'payment-accounts.index' =>
+                        //     str_starts_with($currentRoute, 'payment-accounts.'),
 
                         'invoices.index' =>
                             str_starts_with($currentRoute, 'invoices.'),
@@ -302,4 +329,3 @@
 
     })();
 </script>
-

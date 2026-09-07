@@ -175,20 +175,55 @@ Route::middleware(['auth', 'staff'])->group(function () {
         [InvoiceController::class, 'downloadPdf']
     )->name('invoices.pdf');
 
-    /*
-    |--------------------------------------------------------------------------
-    | EXPENSES
-    |--------------------------------------------------------------------------
-    */
+ /*
+|--------------------------------------------------------------------------
+| EXPENSES
+|--------------------------------------------------------------------------
+*/
 
-    Route::delete(
-        'expenses/bulk-destroy',
-        [ExpenseController::class, 'bulkDestroy']
-    )->name('expenses.bulk-destroy');
+// List pengeluaran
+Route::get(
+    'expenses',
+    [ExpenseController::class, 'index']
+)->name('expenses.index');
 
-    Route::resource('expenses', ExpenseController::class)
-        ->except('show');
+// Form tambah pengeluaran
+Route::get(
+    'expenses/create',
+    [ExpenseController::class, 'create']
+)->name('expenses.create');
 
+// Simpan pengeluaran baru
+Route::post(
+    'expenses',
+    [ExpenseController::class, 'store']
+)->name('expenses.store');
+
+// Hapus banyak pengeluaran
+Route::delete(
+    'expenses/bulk-destroy',
+    [ExpenseController::class, 'bulkDestroy']
+)->name('expenses.bulk-destroy');
+
+// Form edit pengeluaran
+Route::get(
+    'expenses/{expense}/edit',
+    [ExpenseController::class, 'edit']
+)->name('expenses.edit');
+
+// UPDATE PENGELUARAN
+// Sengaja menggunakan POST agar kompatibel dengan Nginx/Hostinger
+// saat mengirim multipart/form-data untuk upload bukti.
+Route::post(
+    'expenses/{expense}',
+    [ExpenseController::class, 'update']
+)->name('expenses.update');
+
+// Hapus satu pengeluaran
+Route::delete(
+    'expenses/{expense}',
+    [ExpenseController::class, 'destroy']
+)->name('expenses.destroy');
     /*
     |--------------------------------------------------------------------------
     | MATERIALS

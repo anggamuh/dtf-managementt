@@ -36,7 +36,12 @@
                 <div class="flex-1 min-w-0">
                     <p class="text-xs font-semibold text-[#64748B] uppercase tracking-wider dark:text-[#94A3B8]">Total Nilai Stok</p>
                     <p class="mt-3 text-2xl font-bold text-[#0F172A] tracking-tight dark:text-[#F8FAFC]">Rp {{ number_format($totalValue,0,',','.') }}</p>
-                    <p class="mt-2 text-xs text-[#64748B] dark:text-[#94A3B8]">Nilai ini yang dipakai di halaman Closing (stok akhir x harga).</p>
+                    <p class="mt-2 text-xs text-[#64748B] dark:text-[#94A3B8]">
+                        Total pembelian periode
+                        {{ \Carbon\Carbon::parse($dateFrom ?? now()->startOfMonth())->format('d/m/Y') }}
+                        -
+                        {{ \Carbon\Carbon::parse($dateTo ?? now()->endOfMonth())->format('d/m/Y') }}.
+                    </p>
                 </div>
                 <div class="app-icon bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -61,9 +66,109 @@
         </div>
     </div>
 
-    @if($machines->isNotEmpty())
-    <form class="mt-5 flex flex-col gap-3 rounded-2xl border border-[#E2E8F0] bg-white p-4 dark:border-[#253247] dark:bg-[#111827] sm:flex-row" method="GET"><input type="hidden" name="branch_id" value="{{ $branchId }}"><input class="app-input" type="search" name="search" value="{{ request('search') }}" placeholder="Cari Powder 4 Head..."><select class="app-input sm:max-w-xs" name="machine_id"><option value="">Semua Mesin</option>@foreach($machines as $machine)<option value="{{ $machine->id }}" @selected((string)request('machine_id')===(string)$machine->id)>{{ $machine->name }}</option>@endforeach<option value="unassigned" @selected(request('machine_id')==='unassigned')>Belum Ditentukan</option></select><button class="app-btn app-btn-primary">Filter</button></form>
-    @endif
+    {{-- Filter Material --}}
+    <form
+        class="mt-5 flex flex-col gap-3 rounded-2xl border border-[#E2E8F0] bg-white p-4 shadow-sm dark:border-[#253247] dark:bg-[#111827]"
+        method="GET"
+    >
+        <input type="hidden" name="branch_id" value="{{ $branchId }}">
+
+        <div class="grid gap-3 lg:grid-cols-4">
+            <div>
+                <label class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">
+                    Dari Tanggal
+                </label>
+                <input
+                    class="app-input w-full"
+                    type="date"
+                    name="date_from"
+                    value="{{ $dateFrom ?? request('date_from') }}"
+                >
+            </div>
+
+            <div>
+                <label class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">
+                    Sampai Tanggal
+                </label>
+                <input
+                    class="app-input w-full"
+                    type="date"
+                    name="date_to"
+                    value="{{ $dateTo ?? request('date_to') }}"
+                >
+            </div>
+
+            <div>
+                <label class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">
+                    Cari Material
+                </label>
+                <input
+                    class="app-input w-full"
+                    type="search"
+                    name="search"
+                    value="{{ request('search') }}"
+                    placeholder="Cari Powder 4 Head..."
+                >
+            </div>
+
+            @if($machines->isNotEmpty())
+                <div>
+                    <label class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">
+                        Mesin
+                    </label>
+                    <select class="app-input w-full" name="machine_id">
+                        <option value="">Semua Mesin</option>
+                        @foreach($machines as $machine)
+                            <option
+                                value="{{ $machine->id }}"
+                                @selected((string) request('machine_id') === (string) $machine->id)
+                            >
+                                {{ $machine->name }}
+                            </option>
+                        @endforeach
+                        <option
+                            value="unassigned"
+                            @selected(request('machine_id') === 'unassigned')
+                        >
+                            Belum Ditentukan
+                        </option>
+                    </select>
+                </div>
+            @else
+                <div class="flex items-end">
+                    <button
+                        type="submit"
+                        class="app-btn app-btn-primary w-full"
+                    >
+                        Terapkan Filter
+                    </button>
+                </div>
+            @endif
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+            @if($machines->isNotEmpty())
+                <button
+                    type="submit"
+                    class="app-btn app-btn-primary"
+                >
+                    Terapkan Filter
+                </button>
+            @endif
+
+            <a
+                href="{{ route('materials.index', ['branch_id' => $branchId]) }}"
+                class="app-btn app-btn-secondary"
+            >
+                Reset
+            </a>
+
+            <span class="ml-auto text-xs text-[#64748B] dark:text-[#94A3B8]">
+                Pembelian dihitung berdasarkan rentang tanggal yang dipilih.
+                Stock pada tabel mengikuti Qty Pembelian pada periode yang dipilih, sama seperti Closing.
+            </span>
+        </div>
+    </form>
 
     {{-- Materials Table --}}
     <div class="mt-5 overflow-x-auto rounded-2xl border border-[#E2E8F0] bg-white shadow-sm dark:border-[#253247] dark:bg-[#111827]">
@@ -97,12 +202,18 @@
                             </div>
                         </td>
                         <td class="p-4 text-center">
-                            @if($m->stock <= $m->minimum_stock)
+                            @php
+                                $displayStock = (float) ($m->period_stock ?? 0);
+                            @endphp
+
+                            @if($displayStock <= (float) $m->minimum_stock)
                                 <span class="inline-flex rounded-full bg-rose-50 text-rose-700 border border-rose-200 px-2.5 py-0.5 text-xs font-bold dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20">
-                                    {{ $m->stock }}
+                                    {{ number_format($displayStock, 2, ',', '.') }}
                                 </span>
                             @else
-                                <span class="font-medium text-[#0F172A] dark:text-[#F8FAFC]">{{ $m->stock }}</span>
+                                <span class="font-medium text-[#0F172A] dark:text-[#F8FAFC]">
+                                    {{ number_format($displayStock, 2, ',', '.') }}
+                                </span>
                             @endif
                         </td>
                         <td class="p-4 text-center text-[#64748B] dark:text-[#94A3B8]">{{ $m->minimum_stock }}</td>
@@ -178,7 +289,9 @@
             @if($materials->isNotEmpty())
                 <tfoot>
                     <tr class="border-t-2 border-[#0F172A] dark:border-[#F8FAFC]">
-                        <td colspan="4" class="p-4 font-bold text-[#0F172A] dark:text-[#F8FAFC]">Total Nilai Stok Bahan Baku</td>
+                        <td colspan="4" class="p-4 font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+                            Total Pembelian Bahan Baku Periode
+                        </td>
                         <td class="p-4 text-right font-bold text-[#0F172A] dark:text-[#F8FAFC]">Rp {{ number_format($totalValue,0,',','.') }}</td>
                         <td colspan="2"></td>
                     </tr>

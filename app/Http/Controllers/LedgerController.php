@@ -3,10 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\Concerns\ResolvesBranch;
+use App\Models\Closing;
 use App\Models\Expense;
 use App\Models\Invoice;
 use App\Models\LedgerPeriodBalance;
-use App\Models\Material;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 
@@ -35,6 +35,12 @@ class LedgerController extends Controller
             ?? 'Cabang';
 
 
+        /*
+        |--------------------------------------------------------------------------
+        | PERIODE
+        |--------------------------------------------------------------------------
+        */
+
         $startDateInput = $request->input('start_date');
         $endDateInput = $request->input('end_date');
 
@@ -54,13 +60,6 @@ class LedgerController extends Controller
             $end = now()->endOfMonth()->endOfDay();
         }
 
-
-        /*
-        |--------------------------------------------------------------------------
-        | JIKA TANGGAL TERBALIK
-        |--------------------------------------------------------------------------
-        */
-
         if ($start->gt($end)) {
             [$start, $end] = [
                 $end->copy()->startOfDay(),
@@ -77,8 +76,6 @@ class LedgerController extends Controller
         | EPUL  = Rp20.000.000
         | RAPLY = Rp10.000.000
         |
-        | Berdasarkan ID cabang agar tidak tergantung nama.
-        |
         */
 
         $saldoTahanan = match ((int) $branchId) {
@@ -92,10 +89,6 @@ class LedgerController extends Controller
         |--------------------------------------------------------------------------
         | INVOICE
         |--------------------------------------------------------------------------
-        |
-        | Filter tetap menggunakan kolom `date`
-        | karena kolom tersebut memang tersedia.
-        |
         */
 
         $invoices = Invoice::with('customer')
@@ -121,32 +114,23 @@ class LedgerController extends Controller
 
         /*
         |--------------------------------------------------------------------------
-        | TOTAL PEMASUKAN
+        | TOTAL
         |--------------------------------------------------------------------------
         */
 
         $totalPemasukan = (float) $invoices->sum('total');
 
-
-        /*
-        |--------------------------------------------------------------------------
-        | TOTAL PENGELUARAN
-        |--------------------------------------------------------------------------
-        */
-
         $totalPengeluaran = (float) $expenses->sum('amount');
 
+        $profit = $totalPemasukan - $totalPengeluaran;
+
 
         /*
         |--------------------------------------------------------------------------
-        | SALDO REALTIME
+        | SALDO REALTIME PERIODE AKTIF
         |--------------------------------------------------------------------------
         */
 
-        /*
-         * Saldo realtime mengikuti rentang tanggal persis yang dipilih.
-         * Rentang boleh melewati pergantian bulan maupun tahun.
-         */
         $periodBalance = $this->findPeriodBalance(
             $branchId,
             $start,
@@ -164,21 +148,112 @@ class LedgerController extends Controller
 
         /*
         |--------------------------------------------------------------------------
-        | SISA MATERIAL
+        | RIWAYAT PERIODE YANG SUDAH DIKUNCI
         |--------------------------------------------------------------------------
+        |
+        | Hanya tampilkan periode dari cabang yang sedang aktif.
+        |
         */
 
-        $remainingMaterial = Material::where('branch_id', $branchId)
-            ->get()
-            ->sum(function ($material) {
-                return (float) $material->stock
-                    * (float) $material->price;
-            });
+        $lockedPeriods = collect();
+
+        if ((int) $branchId !== 0) {
+            $lockedPeriods = LedgerPeriodBalance::query()
+                ->where('branch_id', $branchId)
+                ->whereNotNull('locked_at')
+                ->orderByDesc('period_end')
+                ->orderByDesc('period_start')
+                ->get();
+        }
 
 
         /*
         |--------------------------------------------------------------------------
-        | SUSUN MUTASI
+        | CLOSING PERIODE AKTIF
+        |--------------------------------------------------------------------------
+        |
+        | Buku Besar menggunakan Stock Opname dari Closing periode
+        | yang sama persis.
+        |
+        */
+
+        $closing = Closing::query()
+            ->with('materials')
+            ->where('branch_id', $branchId)
+            ->whereDate(
+                'period_start',
+                $start->toDateString()
+            )
+            ->whereDate(
+                'period_end',
+                $end->toDateString()
+            )
+            ->latest('id')
+            ->first();
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | STOCK OPNAME / REMAINING MATERIAL
+        |--------------------------------------------------------------------------
+        |
+        | Nilai:
+        |
+        | Stock Akhir Closing × Harga Komponen Closing
+        |
+        | Kalau belum ada Closing periode tersebut:
+        | nilai Stock Opname = 0.
+        |
+        */
+
+        $remainingMaterial = 0.0;
+
+        if ($closing) {
+            $remainingMaterial = (float) $closing
+                ->materials
+                ->sum(function ($component) {
+                    $stockAkhir = (float) (
+                        $component->stock_akhir ?? 0
+                    );
+
+                    $hargaKomponen = (float) (
+                        $component->harga_komponen ?? 0
+                    );
+
+                    return $stockAkhir * $hargaKomponen;
+                });
+        }
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | PERHITUNGAN SALDO
+        |--------------------------------------------------------------------------
+        |
+        | Saldo Tahanan Sisa
+        | = Saldo Tahanan - Stock Opname
+        |
+        | Sisa Saldo
+        | = Profit + Saldo Tahanan Sisa
+        |
+        | Selisih
+        | = Saldo Realtime - Sisa Saldo
+        |
+        */
+
+        $saldoTahananSisa =
+            $saldoTahanan - $remainingMaterial;
+
+        $sisaSaldo =
+            $profit + $saldoTahananSisa;
+
+        $selisih =
+            $saldoRealtime - $sisaSaldo;
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | MUTASI
         |--------------------------------------------------------------------------
         */
 
@@ -189,29 +264,30 @@ class LedgerController extends Controller
         |--------------------------------------------------------------------------
         | INVOICE
         |--------------------------------------------------------------------------
-        |
-        | Tanggal yang ditampilkan di Buku Besar mengikuti
-        | tanggal AKHIR PERIODE invoice.
-        |
         */
 
         foreach ($invoices as $invoice) {
-
-            $invoiceDate = $this->getInvoicePeriodEndDate($invoice);
+            $invoiceDate =
+                $this->getInvoicePeriodEndDate($invoice);
 
             $entries->push([
                 'date' => $invoiceDate,
 
-                'ref' => $invoice->invoice_number ?? '-',
+                'ref' =>
+                    $invoice->invoice_number ?? '-',
 
-                'keterangan' => 'Pembayaran dari '
+                'keterangan' =>
+                    'Pembayaran dari '
                     . ($invoice->customer->name ?? 'pelanggan'),
 
-                'debit' => (float) $invoice->total,
+                'debit' =>
+                    (float) $invoice->total,
 
-                'kredit' => 0.0,
+                'kredit' =>
+                    0.0,
 
-                'sort' => $invoice->id,
+                'sort' =>
+                    $invoice->id,
             ]);
         }
 
@@ -223,11 +299,12 @@ class LedgerController extends Controller
         */
 
         foreach ($expenses as $expense) {
-
             $entries->push([
-                'date' => Carbon::parse($expense->date),
+                'date' =>
+                    Carbon::parse($expense->date),
 
-                'ref' => 'EXP-'
+                'ref' =>
+                    'EXP-'
                     . str_pad(
                         $expense->id,
                         4,
@@ -235,13 +312,17 @@ class LedgerController extends Controller
                         STR_PAD_LEFT
                     ),
 
-                'keterangan' => $expense->description,
+                'keterangan' =>
+                    $expense->description,
 
-                'debit' => 0.0,
+                'debit' =>
+                    0.0,
 
-                'kredit' => (float) $expense->amount,
+                'kredit' =>
+                    (float) $expense->amount,
 
-                'sort' => $expense->id,
+                'sort' =>
+                    $expense->id,
             ]);
         }
 
@@ -254,7 +335,6 @@ class LedgerController extends Controller
 
         $entries = $entries
             ->sort(function ($a, $b) {
-
                 $dateCompare =
                     $a['date']->timestamp
                     <=> $b['date']->timestamp;
@@ -263,7 +343,8 @@ class LedgerController extends Controller
                     return $dateCompare;
                 }
 
-                return $a['sort'] <=> $b['sort'];
+                return $a['sort']
+                    <=> $b['sort'];
             })
             ->values();
 
@@ -283,107 +364,93 @@ class LedgerController extends Controller
         |--------------------------------------------------------------------------
         | SALDO AWAL
         |--------------------------------------------------------------------------
-        |
-        | PENTING:
-        |
-        | Saldo awal menggunakan $start.
-        |
-        | Kalau periode:
-        | 06/08/2026 - 10/08/2026
-        |
-        | maka:
-        | Saldo Awal = 06/08/2026
-        |
         */
 
         $running += $saldoTahanan;
 
         $rows->push([
-            'date' => $start->copy(),
+            'date' =>
+                $start->copy(),
 
-            'ref' => '-',
+            'ref' =>
+                '-',
 
-            'keterangan' => 'Saldo Awal (Saldo Tahanan)',
+            'keterangan' =>
+                'Saldo Awal (Saldo Tahanan)',
 
-            'debit' => $saldoTahanan,
+            'debit' =>
+                $saldoTahanan,
 
-            'kredit' => 0.0,
+            'kredit' =>
+                0.0,
 
-            'saldo' => $running,
+            'saldo' =>
+                $running,
         ]);
 
 
         /*
         |--------------------------------------------------------------------------
-        | MUTASI
+        | MUTASI TRANSAKSI
         |--------------------------------------------------------------------------
         */
 
         foreach ($entries as $entry) {
-
             $running +=
                 $entry['debit']
                 - $entry['kredit'];
 
             $rows->push([
-                'date' => $entry['date'],
+                'date' =>
+                    $entry['date'],
 
-                'ref' => $entry['ref'],
+                'ref' =>
+                    $entry['ref'],
 
-                'keterangan' => $entry['keterangan'],
+                'keterangan' =>
+                    $entry['keterangan'],
 
-                'debit' => $entry['debit'],
+                'debit' =>
+                    $entry['debit'],
 
-                'kredit' => $entry['kredit'],
+                'kredit' =>
+                    $entry['kredit'],
 
-                'saldo' => $running,
+                'saldo' =>
+                    $running,
             ]);
         }
 
 
         /*
         |--------------------------------------------------------------------------
-        | PENYESUAIAN MATERIAL
+        | PENYESUAIAN STOCK OPNAME
         |--------------------------------------------------------------------------
-        |
-        | Penyesuaian ditempatkan di tanggal akhir rentang.
-        |
         */
 
         if ($remainingMaterial > 0) {
-
             $running -= $remainingMaterial;
 
             $rows->push([
-                'date' => $end->copy(),
+                'date' =>
+                    $end->copy(),
 
-                'ref' => '-',
+                'ref' =>
+                    '-',
 
                 'keterangan' =>
-                    'Penyesuaian: sisa stok bahan baku (belum jadi kas)',
+                    'Penyesuaian: Stock Opname bahan baku (belum jadi kas)',
 
-                'debit' => 0.0,
+                'debit' =>
+                    0.0,
 
-                'kredit' => $remainingMaterial,
+                'kredit' =>
+                    $remainingMaterial,
 
-                'saldo' => $running,
+                'saldo' =>
+                    $running,
             ]);
         }
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | SUMMARY
-        |--------------------------------------------------------------------------
-        */
-
-        $sisaSaldo = $running;
-
-        $saldoTahananSisa =
-            $saldoTahanan - $remainingMaterial;
-
-        $selisih =
-            $saldoRealtime - $sisaSaldo;
 
 
         /*
@@ -393,37 +460,62 @@ class LedgerController extends Controller
         */
 
         return view('ledger.index', [
-            'rows' => $rows,
+            'rows' =>
+                $rows,
 
-            'branchId' => $branchId,
+            'branchId' =>
+                $branchId,
 
-            'branches' => $branches,
+            'branches' =>
+                $branches,
 
-            'branchName' => $branchName,
+            'branchName' =>
+                $branchName,
 
-            'startDate' => $start->toDateString(),
+            'startDate' =>
+                $start->toDateString(),
 
-            'endDate' => $end->toDateString(),
+            'endDate' =>
+                $end->toDateString(),
 
-            'saldoTahanan' => $saldoTahanan,
+            'saldoTahanan' =>
+                $saldoTahanan,
 
-            'saldoTahananSisa' => $saldoTahananSisa,
+            'saldoTahananSisa' =>
+                $saldoTahananSisa,
 
-            'saldoRealtime' => $saldoRealtime,
+            'saldoRealtime' =>
+                $saldoRealtime,
 
-            'saldoRealtimeLocked' => $saldoRealtimeLocked,
+            'saldoRealtimeLocked' =>
+                $saldoRealtimeLocked,
 
-            'saldoRealtimeLockedAt' => $saldoRealtimeLockedAt,
+            'saldoRealtimeLockedAt' =>
+                $saldoRealtimeLockedAt,
 
-            'totalPemasukan' => $totalPemasukan,
+            'totalPemasukan' =>
+                $totalPemasukan,
 
-            'totalPengeluaran' => $totalPengeluaran,
+            'totalPengeluaran' =>
+                $totalPengeluaran,
 
-            'sisaSaldo' => $sisaSaldo,
+            'profit' =>
+                $profit,
 
-            'selisih' => $selisih,
+            'sisaSaldo' =>
+                $sisaSaldo,
 
-            'remainingMaterial' => $remainingMaterial,
+            'selisih' =>
+                $selisih,
+
+            'remainingMaterial' =>
+                $remainingMaterial,
+
+            'closing' =>
+                $closing,
+
+            'lockedPeriods' =>
+                $lockedPeriods,
         ]);
     }
 
@@ -434,13 +526,9 @@ class LedgerController extends Controller
     |--------------------------------------------------------------------------
     */
 
-    private function getInvoicePeriodEndDate(Invoice $invoice): Carbon
-    {
-        /*
-        | Kalau Invoice punya kolom tanggal akhir periode,
-        | gunakan kolom tersebut.
-        */
-
+    private function getInvoicePeriodEndDate(
+        Invoice $invoice
+    ): Carbon {
         $possibleDateFields = [
             'period_end',
             'period_to',
@@ -452,7 +540,6 @@ class LedgerController extends Controller
         ];
 
         foreach ($possibleDateFields as $field) {
-
             if (
                 array_key_exists(
                     $field,
@@ -461,9 +548,11 @@ class LedgerController extends Controller
                 && !empty($invoice->{$field})
             ) {
                 try {
-                    return Carbon::parse($invoice->{$field});
+                    return Carbon::parse(
+                        $invoice->{$field}
+                    );
                 } catch (\Throwable $e) {
-                    // lanjut
+                    //
                 }
             }
         }
@@ -471,13 +560,8 @@ class LedgerController extends Controller
 
         /*
         |--------------------------------------------------------------------------
-        | Kalau periode disimpan sebagai string
+        | PERIODE STRING
         |--------------------------------------------------------------------------
-        |
-        | Contoh:
-        |
-        | 24/08/2026 - 31/08/2026
-        |
         */
 
         $possiblePeriodFields = [
@@ -487,7 +571,6 @@ class LedgerController extends Controller
         ];
 
         foreach ($possiblePeriodFields as $field) {
-
             if (
                 array_key_exists(
                     $field,
@@ -495,13 +578,11 @@ class LedgerController extends Controller
                 )
                 && !empty($invoice->{$field})
             ) {
-
                 $period = trim(
                     (string) $invoice->{$field}
                 );
 
                 if (str_contains($period, '-')) {
-
                     $parts = preg_split(
                         '/\s*-\s*/',
                         $period
@@ -511,24 +592,21 @@ class LedgerController extends Controller
                         end($parts)
                     );
 
-                    /*
-                    | Format Indonesia:
-                    | 31/08/2026
-                    */
-
                     try {
                         return Carbon::createFromFormat(
                             'd/m/Y',
                             $lastPart
                         );
                     } catch (\Throwable $e) {
-                        // lanjut
+                        //
                     }
 
                     try {
-                        return Carbon::parse($lastPart);
+                        return Carbon::parse(
+                            $lastPart
+                        );
                     } catch (\Throwable $e) {
-                        // fallback
+                        //
                     }
                 }
             }
@@ -539,13 +617,11 @@ class LedgerController extends Controller
         |--------------------------------------------------------------------------
         | FALLBACK
         |--------------------------------------------------------------------------
-        |
-        | Kalau field periode belum tersedia di model,
-        | gunakan tanggal invoice.
-        |
         */
 
-        return Carbon::parse($invoice->date);
+        return Carbon::parse(
+            $invoice->date
+        );
     }
 
 
@@ -555,13 +631,24 @@ class LedgerController extends Controller
     |--------------------------------------------------------------------------
     */
 
-    public function updateRealtime(Request $request)
-    {
-        $branchId = $this->branchId($request);
+    public function updateRealtime(
+        Request $request
+    ) {
+        $branchId =
+            $this->branchId($request);
 
         $validated = $request->validate([
-            'start_date' => ['required', 'date'],
-            'end_date' => ['required', 'date', 'after_or_equal:start_date'],
+            'start_date' => [
+                'required',
+                'date',
+            ],
+
+            'end_date' => [
+                'required',
+                'date',
+                'after_or_equal:start_date',
+            ],
+
             'saldo_realtime' => [
                 'required',
                 'numeric',
@@ -569,23 +656,24 @@ class LedgerController extends Controller
             ],
         ]);
 
-
         abort_if(
             $branchId === 0,
             422,
             'Pilih cabang terlebih dahulu.'
         );
 
-        [$start, $end] = $this->parsedPeriod(
-            $validated['start_date'],
-            $validated['end_date']
-        );
+        [$start, $end] =
+            $this->parsedPeriod(
+                $validated['start_date'],
+                $validated['end_date']
+            );
 
-        $periodBalance = $this->findOrCreatePeriodBalance(
-            $branchId,
-            $start,
-            $end
-        );
+        $periodBalance =
+            $this->findOrCreatePeriodBalance(
+                $branchId,
+                $start,
+                $end
+            );
 
         abort_if(
             $periodBalance->locked_at,
@@ -594,7 +682,8 @@ class LedgerController extends Controller
         );
 
         $periodBalance->update([
-            'saldo_realtime' => (float) $validated['saldo_realtime'],
+            'saldo_realtime' =>
+                (float) $validated['saldo_realtime'],
         ]);
 
         return $this->redirectToPeriod(
@@ -605,16 +694,30 @@ class LedgerController extends Controller
         );
     }
 
-    /**
-     * Kunci saldo realtime tanpa mengunci closing material.
-     */
-    public function lockRealtime(Request $request)
-    {
-        $branchId = $this->branchId($request);
+
+    /*
+    |--------------------------------------------------------------------------
+    | KUNCI SALDO REALTIME
+    |--------------------------------------------------------------------------
+    */
+
+    public function lockRealtime(
+        Request $request
+    ) {
+        $branchId =
+            $this->branchId($request);
 
         $validated = $request->validate([
-            'start_date' => ['required', 'date'],
-            'end_date' => ['required', 'date', 'after_or_equal:start_date'],
+            'start_date' => [
+                'required',
+                'date',
+            ],
+
+            'end_date' => [
+                'required',
+                'date',
+                'after_or_equal:start_date',
+            ],
         ]);
 
         abort_if(
@@ -623,16 +726,18 @@ class LedgerController extends Controller
             'Pilih cabang terlebih dahulu.'
         );
 
-        [$start, $end] = $this->parsedPeriod(
-            $validated['start_date'],
-            $validated['end_date']
-        );
+        [$start, $end] =
+            $this->parsedPeriod(
+                $validated['start_date'],
+                $validated['end_date']
+            );
 
-        $periodBalance = $this->findOrCreatePeriodBalance(
-            $branchId,
-            $start,
-            $end
-        );
+        $periodBalance =
+            $this->findOrCreatePeriodBalance(
+                $branchId,
+                $start,
+                $end
+            );
 
         abort_if(
             $periodBalance->locked_at,
@@ -641,7 +746,8 @@ class LedgerController extends Controller
         );
 
         $periodBalance->update([
-            'locked_at' => now(),
+            'locked_at' =>
+                now(),
         ]);
 
         return $this->redirectToPeriod(
@@ -652,17 +758,40 @@ class LedgerController extends Controller
         );
     }
 
+
+    /*
+    |--------------------------------------------------------------------------
+    | FIND PERIOD BALANCE
+    |--------------------------------------------------------------------------
+    */
+
     private function findPeriodBalance(
         int $branchId,
         Carbon $start,
         Carbon $end
     ): ?LedgerPeriodBalance {
         return LedgerPeriodBalance::query()
-            ->where('branch_id', $branchId)
-            ->whereDate('period_start', $start->toDateString())
-            ->whereDate('period_end', $end->toDateString())
+            ->where(
+                'branch_id',
+                $branchId
+            )
+            ->whereDate(
+                'period_start',
+                $start->toDateString()
+            )
+            ->whereDate(
+                'period_end',
+                $end->toDateString()
+            )
             ->first();
     }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | FIND OR CREATE PERIOD BALANCE
+    |--------------------------------------------------------------------------
+    */
 
     private function findOrCreatePeriodBalance(
         int $branchId,
@@ -671,25 +800,40 @@ class LedgerController extends Controller
     ): LedgerPeriodBalance {
         return LedgerPeriodBalance::firstOrCreate(
             [
-                'branch_id' => $branchId,
-                'period_start' => $start->toDateString(),
-                'period_end' => $end->toDateString(),
+                'branch_id' =>
+                    $branchId,
+
+                'period_start' =>
+                    $start->toDateString(),
+
+                'period_end' =>
+                    $end->toDateString(),
             ],
             [
-                'saldo_realtime' => 0,
+                'saldo_realtime' =>
+                    0,
             ]
         );
     }
 
-    /**
-     * Parse rentang periode tanpa membatasi pergantian bulan/tahun.
-     */
+
+    /*
+    |--------------------------------------------------------------------------
+    | PARSE PERIODE
+    |--------------------------------------------------------------------------
+    */
+
     private function parsedPeriod(
         string $startDate,
         string $endDate
     ): array {
-        $start = Carbon::parse($startDate)->startOfDay();
-        $end = Carbon::parse($endDate)->endOfDay();
+        $start =
+            Carbon::parse($startDate)
+                ->startOfDay();
+
+        $end =
+            Carbon::parse($endDate)
+                ->endOfDay();
 
         abort_if(
             $start->gt($end),
@@ -697,8 +841,18 @@ class LedgerController extends Controller
             'Tanggal akhir harus sama atau setelah tanggal awal.'
         );
 
-        return [$start, $end];
+        return [
+            $start,
+            $end,
+        ];
     }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | REDIRECT
+    |--------------------------------------------------------------------------
+    */
 
     private function redirectToPeriod(
         int $branchId,
@@ -707,11 +861,22 @@ class LedgerController extends Controller
         string $message
     ) {
         return redirect()
-            ->route('ledger.index', [
-                'branch_id' => $branchId,
-                'start_date' => $start->toDateString(),
-                'end_date' => $end->toDateString(),
-            ])
-            ->with('success', $message);
+            ->route(
+                'ledger.index',
+                [
+                    'branch_id' =>
+                        $branchId,
+
+                    'start_date' =>
+                        $start->toDateString(),
+
+                    'end_date' =>
+                        $end->toDateString(),
+                ]
+            )
+            ->with(
+                'success',
+                $message
+            );
     }
 }

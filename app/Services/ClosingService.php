@@ -399,31 +399,132 @@ class ClosingService
     }
 
     /**
-     * Membuat komponen material yang belum ada di closing.
+     * Sinkronisasi stock awal bulan berjalan dari stock akhir
+     * closing bulan sebelumnya.
      *
-     * Stok awal bulan:
-     * - ambil stock_akhir dari closing bulan sebelumnya
-     * - jika belum ada closing sebelumnya, ambil stock material saat ini
+     * Contoh:
+     * Closing Juli:
+     *   PET = 2,30
+     *
+     * Closing Agustus:
+     *   Stock Awal PET = 2,30
+     *
+     * HANYA stock_awal yang disinkronkan untuk material
+     * yang sudah ada di closing.
+     *
+     * qty, pembelian, harga_komponen, dan stock_akhir
+     * TIDAK disentuh.
      */
     public function syncMaterialComponents(
         Closing $closing
     ): void {
-        $prevMonth = $closing->month === 1
-            ? 12
-            : $closing->month - 1;
-
-        $prevYear = $closing->month === 1
-            ? $closing->year - 1
-            : $closing->year;
+        /*
+         * Ambil closing TERAKHIR sebelum periode closing sekarang
+         * dari branch yang sama.
+         *
+         * Jangan lagi bergantung pada month/year - ini aman untuk
+         * closing dengan rentang tanggal custom.
+         *
+         * Contoh:
+         * Closing sebelumnya : 01/07 - 31/07
+         * Closing sekarang   : 10/08 - 05/09
+         *
+         * Maka stock_awal = stock_akhir closing 01/07 - 31/07.
+         */
+        $currentStart = $closing->period_start
+            ? Carbon::parse($closing->period_start)->startOfDay()
+            : Carbon::create($closing->year, $closing->month, 1)->startOfDay();
 
         $prevClosing = Closing::query()
             ->where('branch_id', $closing->branch_id)
-            ->where('month', $prevMonth)
-            ->where('year', $prevYear)
+            ->whereNotNull('period_end')
+            ->where('period_end', '<', $currentStart->toDateString())
+            ->orderByDesc('period_end')
+            ->orderByDesc('id')
             ->first();
 
-        $existingMaterialIds = $closing
+        /*
+         * Kalau belum ada closing bulan sebelumnya,
+         * pertahankan perilaku lama:
+         * hanya buat material yang belum ada.
+         */
+        if (! $prevClosing) {
+            $existingMaterialIds = $closing
+                ->materials()
+                ->pluck('material_id')
+                ->all();
+
+            $materials = Material::query()
+                ->with('machine')
+                ->where('branch_id', $closing->branch_id)
+                ->where('is_active', true)
+                ->whereNotIn('id', $existingMaterialIds)
+                ->get();
+
+            foreach ($materials as $material) {
+                /*
+                 * Closing pertama tidak punya saldo closing sebelumnya.
+                 * Untuk kondisi ini gunakan stock master saat closing
+                 * dibuat sebagai baseline awal.
+                 *
+                 * Setelah closing pertama tersimpan, closing berikutnya
+                 * TIDAK akan mengambil stock master lagi; ia mengambil
+                 * stock_akhir dari closing sebelumnya.
+                 */
+                $baselineStock = (float) $material->stock;
+
+                $closing->materials()->create([
+                    'material_id' => $material->id,
+                    'stock_awal' => $baselineStock,
+                    'harga_komponen' => 0,
+                    'qty' => 0,
+                    'pembelian' => 0,
+                    'stock_akhir' => $baselineStock,
+                ]);
+            }
+
+            return;
+        }
+
+        /*
+         * ================================================================
+         * MATERIAL YANG SUDAH ADA DI CLOSING SEKARANG
+         * ================================================================
+         *
+         * Ini bagian utama perbaikannya:
+         *
+         * stock_awal bulan sekarang
+         * =
+         * stock_akhir bulan sebelumnya
+         *
+         * Hanya field stock_awal yang di-update.
+         */
+        $currentComponents = $closing
             ->materials()
+            ->get();
+
+        foreach ($currentComponents as $component) {
+            $prevComponent = $prevClosing
+                ->materials()
+                ->where('material_id', $component->material_id)
+                ->first();
+
+            if ($prevComponent) {
+                $component->update([
+                    'stock_awal' => (float) $prevComponent->stock_akhir,
+                ]);
+            }
+        }
+
+        /*
+         * ================================================================
+         * MATERIAL BARU
+         * ================================================================
+         *
+         * Kalau ada material baru yang belum ada di closing sekarang,
+         * buat seperti perilaku lama.
+         */
+        $existingMaterialIds = $currentComponents
             ->pluck('material_id')
             ->all();
 
@@ -435,32 +536,31 @@ class ClosingService
             ->get();
 
         foreach ($materials as $material) {
-            $prevComponent = $prevClosing?->materials()
+            $prevComponent = $prevClosing
+                ->materials()
                 ->where('material_id', $material->id)
                 ->first();
 
-            $stockAwal = $prevComponent?->stock_akhir
-                ?? $material->stock;
+            /*
+             * Material baru:
+             * - kalau sudah ada di closing sebelumnya -> carry forward stock_akhir.
+             * - kalau benar-benar baru -> mulai dari 0.
+             *
+             * Jangan memakai Material.stock untuk material baru di sini,
+             * karena Material.stock bisa sudah termasuk pembelian periode
+             * berjalan dan akan membuat stok awal terlihat dobel.
+             */
+            $stockAwal = $prevComponent
+                ? (float) $prevComponent->stock_akhir
+                : 0.0;
 
             $closing->materials()->create([
                 'material_id' => $material->id,
-
-                'stock_awal' => (float) $stockAwal,
-
-                /*
-                 * Harga diisi manual per closing.
-                 */
+                'stock_awal' => $stockAwal,
                 'harga_komponen' => 0,
-
                 'qty' => 0,
-
                 'pembelian' => 0,
-
-                /*
-                 * Default stock akhir sama dengan stock awal.
-                 * User bisa mengubah melalui Stock Akhir.
-                 */
-                'stock_akhir' => (float) $stockAwal,
+                'stock_akhir' => $stockAwal,
             ]);
         }
     }

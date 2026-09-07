@@ -19,17 +19,72 @@ class MaterialController extends Controller
     public function index(Request $r)
     {
         $branchId = $this->branchId($r);
+
+        /*
+         * ============================================================
+         * RENTANG WAKTU PEMBELIAN
+         * ============================================================
+         *
+         * Default = bulan berjalan.
+         *
+         * Rentang ini HANYA memengaruhi nilai pembelian:
+         * - Total Nilai per material
+         * - Total Nilai Stok Bahan Baku
+         *
+         * Stock material tetap stock aktual.
+         */
+        $dateFrom = $r->input(
+            'date_from',
+            now()->startOfMonth()->toDateString()
+        );
+
+        $dateTo = $r->input(
+            'date_to',
+            now()->endOfMonth()->toDateString()
+        );
+
+        try {
+            $from = \Carbon\Carbon::parse($dateFrom)->startOfDay();
+            $to = \Carbon\Carbon::parse($dateTo)->endOfDay();
+        } catch (\Throwable $e) {
+            $from = now()->startOfMonth()->startOfDay();
+            $to = now()->endOfMonth()->endOfDay();
+
+            $dateFrom = $from->toDateString();
+            $dateTo = $to->toDateString();
+        }
+
+        /*
+         * Kalau tanggal terbalik, otomatis ditukar.
+         */
+        if ($from->gt($to)) {
+            [$from, $to] = [$to, $from];
+
+            $dateFrom = $from->toDateString();
+            $dateTo = $to->toDateString();
+        }
+
         $search = trim((string) $r->input('search', ''));
+
         preg_match('/(\d+)\s*head/i', $search, $headMatch);
-        $searchedHeadCount = isset($headMatch[1]) ? (int) $headMatch[1] : null;
-        $baseSearch = trim(preg_replace('/\(?\s*\d+\s*head\s*\)?/i', '', $search));
+
+        $searchedHeadCount = isset($headMatch[1])
+            ? (int) $headMatch[1]
+            : null;
+
+        $baseSearch = trim(
+            preg_replace(
+                '/\(?\s*\d+\s*head\s*\)?/i',
+                '',
+                $search
+            )
+        );
 
         /*
          * Daftar material.
          *
-         * Harga material = Harga Standar/Master.
-         * Total Nilai = total pembelian aktual dari Expense
-         * kategori "Bahan Baku".
+         * Stock = stock aktual.
+         * Harga = harga standar/master.
          */
         $materials = Material::with(['machine', 'movements'])
             ->when(
@@ -38,23 +93,68 @@ class MaterialController extends Controller
             )
             ->when(
                 $search,
-                fn ($q) => $q->where(function ($searchQuery) use ($search, $baseSearch, $searchedHeadCount) {
+                fn ($q) => $q->where(function ($searchQuery) use (
+                    $search,
+                    $baseSearch,
+                    $searchedHeadCount
+                ) {
                     if ($searchedHeadCount !== null) {
-                        $searchQuery->where('name', 'like', "%{$baseSearch}%")
-                            ->whereHas('machine', fn ($machineQuery) => $machineQuery->where('head_count', $searchedHeadCount));
+                        $searchQuery
+                            ->where(
+                                'name',
+                                'like',
+                                "%{$baseSearch}%"
+                            )
+                            ->whereHas(
+                                'machine',
+                                fn ($machineQuery) =>
+                                    $machineQuery->where(
+                                        'head_count',
+                                        $searchedHeadCount
+                                    )
+                            );
 
                         return;
                     }
 
-                    $searchQuery->where('name', 'like', "%{$search}%")
-                        ->orWhereHas('machine', fn ($machineQuery) => $machineQuery
-                            ->where('name', 'like', "%{$search}%")
-                            ->orWhere('code', 'like', "%{$search}%")
-                            ->orWhereRaw('CAST(head_count AS CHAR) LIKE ?', ["%{$search}%"]));
+                    $searchQuery
+                        ->where(
+                            'name',
+                            'like',
+                            "%{$search}%"
+                        )
+                        ->orWhereHas(
+                            'machine',
+                            fn ($machineQuery) =>
+                                $machineQuery
+                                    ->where(
+                                        'name',
+                                        'like',
+                                        "%{$search}%"
+                                    )
+                                    ->orWhere(
+                                        'code',
+                                        'like',
+                                        "%{$search}%"
+                                    )
+                                    ->orWhereRaw(
+                                        'CAST(head_count AS CHAR) LIKE ?',
+                                        ["%{$search}%"]
+                                    )
+                        );
                 })
             )
-            ->when($r->machine_id === 'unassigned', fn ($q) => $q->whereNull('machine_id'))
-            ->when(is_numeric($r->machine_id), fn ($q) => $q->where('machine_id', (int) $r->machine_id))
+            ->when(
+                $r->machine_id === 'unassigned',
+                fn ($q) => $q->whereNull('machine_id')
+            )
+            ->when(
+                is_numeric($r->machine_id),
+                fn ($q) => $q->where(
+                    'machine_id',
+                    (int) $r->machine_id
+                )
+            )
             ->where('is_active', true)
             ->orderBy('machine_id')
             ->orderBy('name')
@@ -62,52 +162,132 @@ class MaterialController extends Controller
             ->withQueryString();
 
         /*
-         * Ambil total pembelian aktual untuk setiap material
-         * pada halaman yang sedang ditampilkan.
+         * ============================================================
+         * TOTAL PEMBELIAN PER MATERIAL
+         * ============================================================
+         *
+         * SEKARANG menggunakan rentang tanggal.
          *
          * Contoh:
-         * POWDER
-         * Expense Bahan Baku = Rp16.250.000
+         * date_from = 2026-08-01
+         * date_to   = 2026-08-31
          *
-         * Maka:
-         * $material->purchase_value = 16.250.000
+         * Maka hanya Expense Bahan Baku bulan Agustus
+         * yang dihitung.
          */
-        $materialIds = $materials->getCollection()->pluck('id');
+        $materialIds = $materials
+            ->getCollection()
+            ->pluck('id');
 
         $purchaseValues = Expense::query()
             ->whereIn('material_id', $materialIds)
             ->where('category', 'Bahan Baku')
+            ->whereBetween('date', [
+                $from,
+                $to,
+            ])
             ->when(
                 $branchId !== 0,
                 fn ($q) => $q->where('branch_id', $branchId)
             )
-            ->selectRaw('material_id, SUM(amount) as total_purchase')
+            ->selectRaw(
+                'material_id, SUM(amount) as total_purchase'
+            )
             ->groupBy('material_id')
-            ->pluck('total_purchase', 'material_id');
-
-        /*
-         * Tambahkan purchase_value ke masing-masing material.
-         */
-        $materials->getCollection()->transform(function ($material) use ($purchaseValues) {
-            $material->purchase_value = (float) (
-                $purchaseValues[$material->id] ?? 0
+            ->pluck(
+                'total_purchase',
+                'material_id'
             );
 
-            return $material;
-        });
+        /*
+         * ============================================================
+         * QTY PEMBELIAN PERIODE
+         * ============================================================
+         *
+         * Ini sengaja dihitung dari Expense.quantity, bukan dari
+         * Material.stock.
+         *
+         * Hasilnya harus sama dengan Qty Pembelian pada Closing
+         * karena Closing juga mengambil SUM(quantity) pada periode
+         * dan branch yang sama.
+         *
+         * PENTING:
+         * - Tidak mengubah materials.stock di database.
+         * - Hanya menjadi nilai tampilan periode di halaman Material.
+         */
+        $periodPurchaseQuantities = Expense::query()
+            ->whereIn(
+                'material_id',
+                $materialIds
+            )
+            ->where(
+                'category',
+                'Bahan Baku'
+            )
+            ->whereBetween(
+                'date',
+                [
+                    $from,
+                    $to,
+                ]
+            )
+            ->when(
+                $branchId !== 0,
+                fn ($q) => $q->where(
+                    'branch_id',
+                    $branchId
+                )
+            )
+            ->selectRaw(
+                'material_id, SUM(quantity) as total_quantity'
+            )
+            ->groupBy(
+                'material_id'
+            )
+            ->pluck(
+                'total_quantity',
+                'material_id'
+            );
 
         /*
-         * Total seluruh pembelian Bahan Baku.
-         *
-         * Ini yang digunakan untuk:
-         * - kartu "Total Nilai Stok"
-         * - footer "Total Nilai Stok Bahan Baku"
-         *
-         * Nilainya mengikuti total pembelian aktual,
-         * bukan stock × harga standar.
+         * Masukkan nilai pembelian dan Qty periode
+         * ke masing-masing material.
+         */
+        $materials->getCollection()->transform(
+            function ($material) use (
+                $purchaseValues,
+                $periodPurchaseQuantities
+            ) {
+                $material->purchase_value = (float) (
+                    $purchaseValues[$material->id] ?? 0
+                );
+
+                /*
+                 * Stock yang ditampilkan pada halaman Material
+                 * mengikuti Qty Pembelian pada Closing untuk
+                 * periode yang dipilih.
+                 *
+                 * materials.stock asli TIDAK diubah.
+                 */
+                $material->period_stock = (float) (
+                    $periodPurchaseQuantities[$material->id] ?? 0
+                );
+
+                return $material;
+            }
+        );
+
+        /*
+         * ============================================================
+         * TOTAL NILAI PEMBELIAN PERIODE
+         * ============================================================
          */
         $totalValue = Expense::query()
             ->where('category', 'Bahan Baku')
+            ->whereBetween('date', [
+                $from,
+                $to,
+            ])
             ->when(
                 $branchId !== 0,
                 fn ($q) => $q->where('branch_id', $branchId)
@@ -115,8 +295,11 @@ class MaterialController extends Controller
             ->sum('amount');
 
         /*
-         * Hitung material yang stoknya berada di bawah/sama
-         * dengan stok minimum.
+         * ============================================================
+         * LOW STOCK
+         * ============================================================
+         *
+         * Tetap berdasarkan stock aktual.
          */
         $lowStockCount = Material::query()
             ->when(
@@ -129,7 +312,11 @@ class MaterialController extends Controller
 
         $machines = $branchId === 0
             ? collect()
-            : Branch::findOrFail($branchId)->machines()->where('is_active', true)->orderBy('head_count')->get();
+            : Branch::findOrFail($branchId)
+                ->machines()
+                ->where('is_active', true)
+                ->orderBy('head_count')
+                ->get();
 
         return view(
             'materials.index',
@@ -137,7 +324,9 @@ class MaterialController extends Controller
                 'materials',
                 'branchId',
                 'totalValue',
-                'lowStockCount'
+                'lowStockCount',
+                'dateFrom',
+                'dateTo'
             ) + [
                 'branches' => $this->branches(),
                 'machines' => $machines,
@@ -189,8 +378,11 @@ class MaterialController extends Controller
             );
     }
 
-    private function validatedData(Request $r, int $branchId, ?Material $material = null): array
-    {
+    private function validatedData(
+        Request $r,
+        int $branchId,
+        ?Material $material = null
+    ): array {
         $machines = $this->activeMachines($branchId);
         $machineLocked = $material && $this->machineLocked($material);
 
@@ -201,11 +393,15 @@ class MaterialController extends Controller
             'price' => 'required|numeric|min:0',
             'supplier' => 'nullable|string|max:255',
             'machine_id' => [
-                $machines->isNotEmpty() && ! $machineLocked ? 'required' : 'nullable',
+                $machines->isNotEmpty() && ! $machineLocked
+                    ? 'required'
+                    : 'nullable',
                 'integer',
-                Rule::exists('machines', 'id')->where(fn ($q) => $q
-                    ->where('branch_id', $branchId)
-                    ->where('is_active', true)),
+                Rule::exists('machines', 'id')->where(
+                    fn ($q) => $q
+                        ->where('branch_id', $branchId)
+                        ->where('is_active', true)
+                ),
             ],
         ]);
 
@@ -215,22 +411,51 @@ class MaterialController extends Controller
             $d['machine_id'] = null;
         }
 
-        $normalizedName = mb_strtolower(trim(preg_replace('/\s+/', ' ', $d['name'])));
+        $normalizedName = mb_strtolower(
+            trim(
+                preg_replace(
+                    '/\s+/',
+                    ' ',
+                    $d['name']
+                )
+            )
+        );
+
         $duplicate = Material::query()
             ->where('branch_id', $branchId)
             ->where('is_active', true)
-            ->when(isset($d['machine_id']), fn ($q) => $q->where('machine_id', $d['machine_id']), fn ($q) => $q->whereNull('machine_id'))
-            ->when($material, fn ($q) => $q->whereKeyNot($material->id))
-            ->whereRaw('LOWER(TRIM(name)) = ?', [$normalizedName])
+            ->when(
+                isset($d['machine_id']),
+                fn ($q) => $q->where(
+                    'machine_id',
+                    $d['machine_id']
+                ),
+                fn ($q) => $q->whereNull('machine_id')
+            )
+            ->when(
+                $material,
+                fn ($q) => $q->whereKeyNot($material->id)
+            )
+            ->whereRaw(
+                'LOWER(TRIM(name)) = ?',
+                [$normalizedName]
+            )
             ->exists();
 
         if ($duplicate) {
             throw ValidationException::withMessages([
-                'name' => 'Material dengan nama dan mesin tersebut sudah tersedia di cabang ini.',
+                'name' =>
+                    'Material dengan nama dan mesin tersebut sudah tersedia di cabang ini.',
             ]);
         }
 
-        $d['name'] = trim(preg_replace('/\s+/', ' ', $d['name']));
+        $d['name'] = trim(
+            preg_replace(
+                '/\s+/',
+                ' ',
+                $d['name']
+            )
+        );
 
         return $d;
     }
@@ -251,18 +476,16 @@ class MaterialController extends Controller
      * Perbarui data material.
      *
      * Stock tidak diedit dari form ini.
-     * Stock diubah melalui:
-     * - pembelian Bahan Baku
-     * - Stok Opname
-     *
-     * Price adalah Harga Standar/Master dan dapat diubah
-     * secara manual dari form Material.
      */
     public function update(Request $r, Material $material)
     {
         $this->guard($material);
 
-        $d = $this->validatedData($r, $material->branch_id, $material);
+        $d = $this->validatedData(
+            $r,
+            $material->branch_id,
+            $material
+        );
 
         $material->update($d);
 
@@ -270,7 +493,10 @@ class MaterialController extends Controller
             ->route('materials.index', [
                 'branch_id' => $material->branch_id,
             ])
-            ->with('message', 'Material berhasil diperbarui.');
+            ->with(
+                'message',
+                'Material berhasil diperbarui.'
+            );
     }
 
     /**
@@ -287,7 +513,9 @@ class MaterialController extends Controller
         ]);
 
         DB::transaction(function () use ($material, $d) {
-            $diff = (float) $d['stock'] - (float) $material->stock;
+            $diff =
+                (float) $d['stock']
+                - (float) $material->stock;
 
             if ($diff !== 0.0) {
                 $material->movements()->create([
@@ -313,10 +541,6 @@ class MaterialController extends Controller
     {
         $this->guard($material);
 
-        /*
-         * Material tidak boleh dihapus jika sudah digunakan
-         * pada stock movement atau historical closing.
-         */
         if (
             $material->movements()->exists()
             || $material->closingMaterials()->exists()
@@ -346,7 +570,8 @@ class MaterialController extends Controller
 
     private function activeMachines(int $branchId)
     {
-        return Branch::findOrFail($branchId)->machines()
+        return Branch::findOrFail($branchId)
+            ->machines()
             ->where('is_active', true)
             ->orderBy('head_count')
             ->get();
