@@ -34,7 +34,7 @@
         <div class="app-stat-card">
             <div class="flex items-start justify-between">
                 <div class="flex-1 min-w-0">
-                    <p class="text-xs font-semibold text-[#64748B] uppercase tracking-wider dark:text-[#94A3B8]">Total Nilai Stok</p>
+                    <p class="text-xs font-semibold text-[#64748B] uppercase tracking-wider dark:text-[#94A3B8]">Total Pembelian</p>
                     <p class="mt-3 text-2xl font-bold text-[#0F172A] tracking-tight dark:text-[#F8FAFC]">Rp {{ number_format($totalValue,0,',','.') }}</p>
                     <p class="mt-2 text-xs text-[#64748B] dark:text-[#94A3B8]">
                         Total pembelian periode
@@ -164,67 +164,86 @@
             </a>
 
             <span class="ml-auto text-xs text-[#64748B] dark:text-[#94A3B8]">
-                Pembelian dihitung berdasarkan rentang tanggal yang dipilih.
-                Stock pada tabel mengikuti Qty Pembelian pada periode yang dipilih, sama seperti Closing.
+                Nilai periode menggunakan perhitungan yang sama dengan Rincian Material pada Closing.
             </span>
         </div>
     </form>
 
     {{-- Materials Table --}}
-    <div class="mt-5 overflow-x-auto rounded-2xl border border-[#E2E8F0] bg-white shadow-sm dark:border-[#253247] dark:bg-[#111827]">
-        <table class="w-full text-sm">
+    <div class="mt-5 overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100" x-data="{ opname: null }">
+        <div class="border-b border-slate-200 p-5 dark:border-slate-700">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <h2 class="text-lg font-bold text-slate-800 dark:text-white">Rincian Material</h2>
+                    <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                        Qty dan Pembelian berasal dari Expense kategori Bahan Baku.
+                        @if($closing)
+                            Stock Awal, Harga Komponen, dan Stock Akhir mengikuti snapshot Closing periode ini.
+                        @else
+                            Belum ada Closing untuk rentang ini; stock direkonstruksi dari movement dan Harga Komponen ditampilkan Rp0.
+                        @endif
+                    </p>
+                </div>
+                <div class="text-sm text-slate-500 dark:text-slate-400">
+                    Total Pembelian:
+                    <span class="font-semibold text-slate-800 dark:text-white">
+                        Rp{{ number_format($totalValue, 0, ',', '.') }}
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <table class="w-full min-w-[980px] text-sm">
             <thead class="bg-[#F8FAFC] border-b border-[#E2E8F0] text-left dark:bg-[#0B1220] dark:border-[#253247]">
                 <tr>
-                    <th class="p-4 font-semibold text-[#64748B] dark:text-[#94A3B8]">Material</th>
-                    <th class="p-4 font-semibold text-[#64748B] text-center dark:text-[#94A3B8]">Stok</th>
-                    <th class="p-4 font-semibold text-[#64748B] text-center dark:text-[#94A3B8]">Minimum</th>
-                    <th class="p-4 font-semibold text-[#64748B] text-right dark:text-[#94A3B8]">Harga</th>
-                    <th class="p-4 font-semibold text-[#64748B] text-right dark:text-[#94A3B8]">Total Nilai</th>
-                    <th class="p-4 font-semibold text-[#64748B] dark:text-[#94A3B8]">Supplier</th>
+                    <th class="p-3 font-semibold text-[#64748B] dark:text-[#94A3B8]">Nama Komponen</th>
+                    <th class="p-3 text-right font-semibold text-[#64748B] dark:text-[#94A3B8]">Stock Awal</th>
+                    <th class="p-3 text-right font-semibold text-[#64748B] dark:text-[#94A3B8]">Harga Komponen</th>
+                    <th class="p-3 text-right font-semibold text-[#64748B] dark:text-[#94A3B8]">Qty</th>
+                    <th class="p-3 text-right font-semibold text-[#64748B] dark:text-[#94A3B8]">Pembelian</th>
+                    <th class="p-3 text-right font-semibold text-[#64748B] dark:text-[#94A3B8]">Stock Akhir</th>
                     <th class="p-4 font-semibold text-[#64748B] text-center dark:text-[#94A3B8]">Aksi</th>
                 </tr>
             </thead>
             <tbody>
-                @forelse($materials as $m)
-                    <tr class="border-b border-[#E2E8F0] hover:bg-[#F8FAFC] transition-colors duration-150 dark:border-[#253247] dark:hover:bg-[#172033]" x-data="{ opname: false }">
-                        <td class="p-4">
-                            <div class="flex items-center gap-3">
-                                <div class="app-icon-sm bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
-                                    </svg>
-                                </div>
-                                <div>
-                                    <div class="text-sm font-medium text-[#0F172A] dark:text-[#F8FAFC]">{{ $m->display_name }}</div>
-                                    @if($machines->isNotEmpty())<span class="mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold {{ $m->machine ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300' }}">{{ $m->machine?->name ?? 'Belum Ditentukan' }}</span>@endif
-                                    <div class="text-xs text-[#64748B] dark:text-[#94A3B8]">{{ $m->unit }}</div>
-                                </div>
-                            </div>
+                @forelse($materialGroups as $groupRows)
+                    @php
+                        $groupMaterial = $groupRows->first()['material'];
+                        $machineName = $groupMaterial->machine?->name ?? 'Belum Ditentukan';
+                        $machineSubtotal = $groupRows->sum('purchase_value');
+                    @endphp
+                    <tr class="bg-blue-50 dark:bg-blue-500/10">
+                        <td colspan="7" class="p-3 text-xs font-bold uppercase tracking-wide text-blue-700 dark:text-blue-300">
+                            {{ $machineName }}
+                            <span class="float-right normal-case">
+                                Subtotal pembelian: Rp{{ number_format($machineSubtotal, 0, ',', '.') }}
+                            </span>
                         </td>
-                        <td class="p-4 text-center">
-                            @php
-                                $displayStock = (float) ($m->period_stock ?? 0);
-                            @endphp
+                    </tr>
 
-                            @if($displayStock <= (float) $m->minimum_stock)
-                                <span class="inline-flex rounded-full bg-rose-50 text-rose-700 border border-rose-200 px-2.5 py-0.5 text-xs font-bold dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20">
-                                    {{ number_format($displayStock, 2, ',', '.') }}
-                                </span>
-                            @else
-                                <span class="font-medium text-[#0F172A] dark:text-[#F8FAFC]">
-                                    {{ number_format($displayStock, 2, ',', '.') }}
+                    @foreach($groupRows as $row)
+                        @php
+                            $m = $row['material'];
+                            $isLowStock = (float) $m->stock <= (float) $m->minimum_stock;
+                        @endphp
+                    <tr class="border-b border-slate-100 hover:bg-slate-50/50 dark:border-slate-700 dark:hover:bg-slate-900/50">
+                        <td class="p-3 font-medium text-slate-800 dark:text-white">
+                            {{ $m->display_name }}
+                            <span class="text-xs font-normal text-slate-500 dark:text-slate-400">{{ $m->unit }}</span>
+                            @if($isLowStock)
+                                <span class="ml-2 inline-flex rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-400" title="Stok aktual {{ number_format((float) $m->stock, 2, ',', '.') }}; minimum {{ number_format((float) $m->minimum_stock, 2, ',', '.') }}">
+                                    Low Stock
                                 </span>
                             @endif
                         </td>
-                        <td class="p-4 text-center text-[#64748B] dark:text-[#94A3B8]">{{ $m->minimum_stock }}</td>
-                        <td class="p-4 text-right font-medium text-[#0F172A] dark:text-[#F8FAFC]">Rp {{ number_format($m->price,0,',','.') }}</td>
-                      <td class="p-4 text-right font-semibold text-[#0F172A] dark:text-[#F8FAFC]">
-    Rp {{ number_format($m->purchase_value ?? 0, 0, ',', '.') }}
-</td>
-                        <td class="p-4 text-[#64748B] dark:text-[#94A3B8]">{{ $m->supplier }}</td>
-                        <td class="p-4">
+                        <td class="p-3 text-right text-slate-800 dark:text-white">{{ number_format($row['stock_awal'], 2, ',', '.') }}</td>
+                        <td class="p-3 text-right font-medium text-slate-800 dark:text-white">Rp{{ number_format($row['unit_cost'], 0, ',', '.') }}</td>
+                        <td class="p-3 text-right text-slate-800 dark:text-white">{{ $row['incoming_quantity'] > 0 ? number_format($row['incoming_quantity'], 2, ',', '.') : '' }}</td>
+                        <td class="p-3 text-right font-semibold text-slate-800 dark:text-white">{{ $row['purchase_value'] > 0 ? 'Rp'.number_format($row['purchase_value'], 0, ',', '.') : '' }}</td>
+                        <td class="p-3 text-right font-medium text-slate-800 dark:text-white">{{ number_format($row['stock_akhir'], 2, ',', '.') }}</td>
+                        <td class="p-3">
                             <div class="flex items-center justify-center gap-2">
-                                <button type="button" @click="opname = !opname"
+                                <button type="button" @click="opname = opname === {{ $m->id }} ? null : {{ $m->id }}"
                                         class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#E2E8F0] text-[#64748B] hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition-all duration-150 dark:border-[#253247] dark:text-[#94A3B8] dark:hover:bg-emerald-500/10 dark:hover:text-emerald-400 dark:hover:border-emerald-500/30"
                                         title="Stok Opname" aria-label="Stok opname">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -252,7 +271,7 @@
                             </div>
                         </td>
                     </tr>
-                    <tr x-show="opname" x-cloak class="border-b border-[#E2E8F0] bg-emerald-50/40 dark:border-[#253247] dark:bg-emerald-500/5">
+                    <tr x-show="opname === {{ $m->id }}" x-cloak class="border-b border-[#E2E8F0] bg-emerald-50/40 dark:border-[#253247] dark:bg-emerald-500/5">
                         <td colspan="7" class="p-4">
                             <form method="POST" action="{{ route('materials.opname', $m) }}" class="flex flex-wrap items-end gap-3 branch-required">
                                 @csrf
@@ -272,6 +291,7 @@
                             </form>
                         </td>
                     </tr>
+                    @endforeach
                 @empty
                     <tr>
                         <td colspan="7" class="p-10 text-center text-[#94A3B8] dark:text-[#64748B]">
@@ -286,23 +306,18 @@
                     </tr>
                 @endforelse
             </tbody>
-            @if($materials->isNotEmpty())
+            @if($materialRows->isNotEmpty())
                 <tfoot>
                     <tr class="border-t-2 border-[#0F172A] dark:border-[#F8FAFC]">
-                        <td colspan="4" class="p-4 font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+                        <td colspan="4" class="p-3 font-bold text-[#0F172A] dark:text-[#F8FAFC]">
                             Total Pembelian Bahan Baku Periode
                         </td>
-                        <td class="p-4 text-right font-bold text-[#0F172A] dark:text-[#F8FAFC]">Rp {{ number_format($totalValue,0,',','.') }}</td>
+                        <td class="p-3 text-right font-bold text-[#0F172A] dark:text-[#F8FAFC]">Rp{{ number_format($totalValue,0,',','.') }}</td>
                         <td colspan="2"></td>
                     </tr>
                 </tfoot>
             @endif
         </table>
-    </div>
-
-    {{-- Pagination --}}
-    <div class="mt-4">
-        {{ $materials->links() }}
     </div>
 
     @push('scripts')

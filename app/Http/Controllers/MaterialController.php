@@ -4,9 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Http\Controllers\Concerns\ResolvesBranch;
 use App\Models\Branch;
-use App\Models\Expense;
-use App\Models\Machine;
+use App\Models\Closing;
 use App\Models\Material;
+use App\Services\ClosingService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -15,6 +16,10 @@ use Illuminate\Validation\ValidationException;
 class MaterialController extends Controller
 {
     use ResolvesBranch;
+
+    public function __construct(
+        private readonly ClosingService $closingService
+    ) {}
 
     public function index(Request $r)
     {
@@ -44,8 +49,8 @@ class MaterialController extends Controller
         );
 
         try {
-            $from = \Carbon\Carbon::parse($dateFrom)->startOfDay();
-            $to = \Carbon\Carbon::parse($dateTo)->endOfDay();
+            $from = Carbon::parse($dateFrom)->startOfDay();
+            $to = Carbon::parse($dateTo)->endOfDay();
         } catch (\Throwable $e) {
             $from = now()->startOfMonth()->startOfDay();
             $to = now()->endOfMonth()->endOfDay();
@@ -81,12 +86,11 @@ class MaterialController extends Controller
         );
 
         /*
-         * Daftar material.
-         *
-         * Stock = stock aktual.
-         * Harga = harga standar/master.
+         * Filter hanya menentukan material yang terlihat. Seluruh nilai
+         * periode tetap dibangun oleh ClosingService agar tidak ada rumus
+         * material kedua di controller ini.
          */
-        $materials = Material::with(['machine', 'movements'])
+        $visibleMaterialIds = Material::query()
             ->when(
                 $branchId !== 0,
                 fn ($q) => $q->where('branch_id', $branchId)
@@ -156,143 +160,34 @@ class MaterialController extends Controller
                 )
             )
             ->where('is_active', true)
-            ->orderBy('machine_id')
-            ->orderBy('name')
-            ->paginate(15)
-            ->withQueryString();
-
-        /*
-         * ============================================================
-         * TOTAL PEMBELIAN PER MATERIAL
-         * ============================================================
-         *
-         * SEKARANG menggunakan rentang tanggal.
-         *
-         * Contoh:
-         * date_from = 2026-08-01
-         * date_to   = 2026-08-31
-         *
-         * Maka hanya Expense Bahan Baku bulan Agustus
-         * yang dihitung.
-         */
-        $materialIds = $materials
-            ->getCollection()
             ->pluck('id');
 
-        $purchaseValues = Expense::query()
-            ->whereIn('material_id', $materialIds)
-            ->where('category', 'Bahan Baku')
-            ->whereBetween('date', [
+        $closing = $branchId === 0
+            ? null
+            : $this->matchingClosing($branchId, $from, $to);
+
+        $allMaterialRows = $branchId === 0
+            ? collect()
+            : $this->closingService->getMaterialRows(
+                $branchId,
                 $from,
                 $to,
-            ])
-            ->when(
-                $branchId !== 0,
-                fn ($q) => $q->where('branch_id', $branchId)
-            )
-            ->selectRaw(
-                'material_id, SUM(amount) as total_purchase'
-            )
-            ->groupBy('material_id')
-            ->pluck(
-                'total_purchase',
-                'material_id'
+                $closing
             );
 
-        /*
-         * ============================================================
-         * QTY PEMBELIAN PERIODE
-         * ============================================================
-         *
-         * Ini sengaja dihitung dari Expense.quantity, bukan dari
-         * Material.stock.
-         *
-         * Hasilnya harus sama dengan Qty Pembelian pada Closing
-         * karena Closing juga mengambil SUM(quantity) pada periode
-         * dan branch yang sama.
-         *
-         * PENTING:
-         * - Tidak mengubah materials.stock di database.
-         * - Hanya menjadi nilai tampilan periode di halaman Material.
-         */
-        $periodPurchaseQuantities = Expense::query()
-            ->whereIn(
-                'material_id',
-                $materialIds
-            )
-            ->where(
-                'category',
-                'Bahan Baku'
-            )
-            ->whereBetween(
-                'date',
-                [
-                    $from,
-                    $to,
-                ]
-            )
-            ->when(
-                $branchId !== 0,
-                fn ($q) => $q->where(
-                    'branch_id',
-                    $branchId
+        $totalValue = (float) $allMaterialRows->sum('purchase_value');
+        $materialRows = $allMaterialRows
+            ->filter(
+                fn ($row) => $visibleMaterialIds->contains(
+                    $row['material']->id
                 )
             )
-            ->selectRaw(
-                'material_id, SUM(quantity) as total_quantity'
-            )
-            ->groupBy(
-                'material_id'
-            )
-            ->pluck(
-                'total_quantity',
-                'material_id'
-            );
-
-        /*
-         * Masukkan nilai pembelian dan Qty periode
-         * ke masing-masing material.
-         */
-        $materials->getCollection()->transform(
-            function ($material) use (
-                $purchaseValues,
-                $periodPurchaseQuantities
-            ) {
-                $material->purchase_value = (float) (
-                    $purchaseValues[$material->id] ?? 0
-                );
-
-                /*
-                 * Stock yang ditampilkan pada halaman Material
-                 * mengikuti Qty Pembelian pada Closing untuk
-                 * periode yang dipilih.
-                 *
-                 * materials.stock asli TIDAK diubah.
-                 */
-                $material->period_stock = (float) (
-                    $periodPurchaseQuantities[$material->id] ?? 0
-                );
-
-                return $material;
-            }
+            ->values();
+        $materialGroups = $materialRows->groupBy(
+            fn ($row) => $row['material']->machine_id === null
+                ? 'unassigned'
+                : 'machine-'.$row['material']->machine_id
         );
-
-        /*
-         * ============================================================
-         * TOTAL NILAI PEMBELIAN PERIODE
-         * ============================================================
-         */
-        $totalValue = Expense::query()
-            ->where('category', 'Bahan Baku')
-            ->whereBetween('date', [
-                $from,
-                $to,
-            ])
-            ->when(
-                $branchId !== 0,
-                fn ($q) => $q->where('branch_id', $branchId)
-            )
-            ->sum('amount');
 
         /*
          * ============================================================
@@ -321,7 +216,9 @@ class MaterialController extends Controller
         return view(
             'materials.index',
             compact(
-                'materials',
+                'materialRows',
+                'materialGroups',
+                'closing',
                 'branchId',
                 'totalValue',
                 'lowStockCount',
@@ -332,6 +229,36 @@ class MaterialController extends Controller
                 'machines' => $machines,
             ]
         );
+    }
+
+    private function matchingClosing(
+        int $branchId,
+        Carbon $from,
+        Carbon $to
+    ): ?Closing {
+        return Closing::query()
+            ->where('branch_id', $branchId)
+            ->where(function ($query) use ($from, $to) {
+                $query->where(function ($periodQuery) use ($from, $to) {
+                    $periodQuery
+                        ->whereDate('period_start', $from->toDateString())
+                        ->whereDate('period_end', $to->toDateString());
+                });
+
+                if (
+                    $from->isStartOfMonth()
+                    && $to->isSameDay($from->copy()->endOfMonth())
+                ) {
+                    $query->orWhere(function ($legacyQuery) use ($from) {
+                        $legacyQuery
+                            ->whereNull('period_start')
+                            ->whereNull('period_end')
+                            ->where('month', $from->month)
+                            ->where('year', $from->year);
+                    });
+                }
+            })
+            ->first();
     }
 
     public function create(Request $r)
