@@ -7,6 +7,12 @@ use App\Models\Branch;
 use App\Models\Closing;
 use App\Services\ClosingService;
 use Barryvdh\DomPDF\Facade\Pdf;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Style\Color;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 
@@ -524,13 +530,24 @@ class ClosingController extends Controller
         );
 
         $branch = Branch::find($branchId);
+        
+        $orders = \App\Models\Order::with(['customer', 'product'])
+    ->where('branch_id', $branchId)
+    ->whereBetween('date', [
+        $closing->period_start ?? Carbon::create($year, $month, 1)->startOfMonth(),
+        $closing->period_end ?? Carbon::create($year, $month, 1)->endOfMonth(),
+    ])
+    ->orderBy('date')
+    ->get();
 
         return Pdf::loadView(
             'closing.export-pdf',
             $data + compact(
                 'month',
                 'year',
-                'branch'
+                'branch',
+                'closing',
+                 'orders' 
             )
         )
             ->setPaper('a4', 'landscape')
@@ -542,269 +559,237 @@ class ClosingController extends Controller
     /**
      * Export Excel / CSV.
      */
-    public function exportExcel(Request $r)
-    {
-        $branchId = $this->branchId($r);
-
-        $month = (int) $r->input(
-            'month',
-            now()->month
-        );
-
-        $year = (int) $r->input(
-            'year',
-            now()->year
-        );
-
-        $closing = Closing::query()
-            ->where('branch_id', $branchId)
-            ->where('month', $month)
-            ->where('year', $year)
-            ->first();
-
-        $data = $this->service->getData(
-            $branchId,
-            $month,
-            $year,
-            $closing
-        );
-
-        $branch = Branch::find($branchId);
-
-        return response()->streamDownload(
-            function () use (
-                $data,
-                $month,
-                $year,
-                $branch
-            ) {
-                $handle = fopen(
-                    'php://output',
-                    'w'
-                );
-
-                /*
-                 * BOM UTF-8 agar Excel membaca karakter
-                 * Indonesia dengan benar.
-                 */
-                fwrite(
-                    $handle,
-                    "\xEF\xBB\xBF"
-                );
-
-                /*
-                 * Header.
-                 */
-                fputcsv(
-                    $handle,
-                    ['CLOSING REPORT'],
-                    ';'
-                );
-
-                fputcsv(
-                    $handle,
-                    [
-                        "Cabang: {$branch->name}",
-                        'Periode: '
-                        .Carbon::create(
-                            $year,
-                            $month,
-                            1
-                        )->translatedFormat('F Y'),
-                    ],
-                    ';'
-                );
-
-                fputcsv(
-                    $handle,
-                    [],
-                    ';'
-                );
-
-                /*
-                 * Ringkasan.
-                 */
-                fputcsv(
-                    $handle,
-                    ['RINGKASAN'],
-                    ';'
-                );
-
-                fputcsv(
-                    $handle,
-                    [
-                        'Total Penjualan',
-                        'Total Pengeluaran',
-                        'Laba Bersih',
-                        'HPP',
-                    ],
-                    ';'
-                );
-
-                fputcsv(
-                    $handle,
-                    [
-                        $data['totalIncome'] ?? 0,
-                        $data['totalExpense'] ?? 0,
-                        $data['profit'] ?? 0,
-                        $data['closing']->hpp ?? 0,
-                    ],
-                    ';'
-                );
-
-                fputcsv(
-                    $handle,
-                    [],
-                    ';'
-                );
-
-                /*
-                 * Detail pemasukan.
-                 */
-                fputcsv(
-                    $handle,
-                    ['DETAIL PEMASUKAN'],
-                    ';'
-                );
-
-                fputcsv(
-                    $handle,
-                    [
-                        'Invoice',
-                        'Customer',
-                        'Tanggal',
-                        'Total',
-                        'Status',
-                    ],
-                    ';'
-                );
-
-                if (
-                    isset($data['invoices'])
-                    && $data['invoices']->isNotEmpty()
-                ) {
-                    foreach (
-                        $data['invoices'] as $invoice
-                    ) {
-                        fputcsv(
-                            $handle,
-                            [
-                                $invoice->invoice_number,
-                                $invoice->customer->name ?? 'N/A',
-                                $invoice->date->format('d/m/Y'),
-                                $invoice->total,
-                                $invoice->status,
-                            ],
-                            ';'
-                        );
-                    }
-                }
-
-                fputcsv(
-                    $handle,
-                    [],
-                    ';'
-                );
-
-                /*
-                 * Detail pengeluaran.
-                 */
-                fputcsv(
-                    $handle,
-                    ['DETAIL PENGELUARAN'],
-                    ';'
-                );
-
-                fputcsv(
-                    $handle,
-                    [
-                        'Tanggal',
-                        'Kategori',
-                        'Deskripsi',
-                        'Jumlah',
-                        'Metode',
-                    ],
-                    ';'
-                );
-
-                if (
-                    isset($data['expenses'])
-                    && $data['expenses']->isNotEmpty()
-                ) {
-                    foreach (
-                        $data['expenses'] as $expense
-                    ) {
-                        fputcsv(
-                            $handle,
-                            [
-                                $expense->date->format('d/m/Y'),
-                                $expense->category,
-                                $expense->material?->display_name ?? $expense->description,
-                                $expense->amount,
-                                $expense->payment_method,
-                            ],
-                            ';'
-                        );
-                    }
-                }
-
-                fputcsv(
-                    $handle,
-                    [],
-                    ';'
-                );
-
-                /*
-                 * Detail material.
-                 */
-                fputcsv(
-                    $handle,
-                    ['DETAIL MATERIAL & STOK'],
-                    ';'
-                );
-
-                fputcsv(
-                    $handle,
-                    [
-                        'Material',
-                        'Mesin',
-                        'Satuan',
-                        'Stok Awal',
-                        'Pembelian',
-                        'Pemakaian',
-                        'Stok Akhir',
-                        'HPP',
-                    ],
-                    ';'
-                );
-
-                if (
-                    isset($data['materialRows'])
-                    && $data['materialRows']->isNotEmpty()
-                ) {
-                    foreach (
-                        $data['materialRows'] as $material
-                    ) {
-                        fputcsv(
-                            $handle,
-                            [
-                                $material['material']->display_name ?? 'N/A',
-                                $material['material']->machine?->name ?? '',
-                                $material['material']->unit ?? '',
-                                $material['stock_awal'] ?? 0,
-                                $material['purchase_value'] ?? 0,
-                                $material['usage'] ?? 0,
-                                $material['stock_akhir'] ?? 0,
-                                $material['material_cost'] ?? 0,
-                            ],
-                            ';'
-                        );
-                    }
-                }
-
-                fclose($handle);
-            },
-            "closing-{$year}-{$month}.csv"
-        );
+  public function exportExcel(Request $r)
+{
+    $branchId = $this->branchId($r);
+ 
+    $month = (int) $r->input('month', now()->month);
+    $year = (int) $r->input('year', now()->year);
+ 
+    abort_if(
+        $branchId === 0,
+        422,
+        'Pilih cabang terlebih dahulu untuk melakukan export.'
+    );
+ 
+    $closing = Closing::query()
+        ->where('branch_id', $branchId)
+        ->where('month', $month)
+        ->where('year', $year)
+        ->first();
+ 
+    abort_if(
+        ! $closing,
+        422,
+        'Closing belum digenerate untuk periode ini.'
+    );
+ 
+    $data = $this->service->getData($branchId, $month, $year, $closing);
+    $branch = Branch::find($branchId);
+    $period = Carbon::create($year, $month, 1)->translatedFormat('F Y');
+ 
+    $spreadsheet = new Spreadsheet();
+    $sheet = $spreadsheet->getActiveSheet();
+    $sheet->setTitle('Closing '.$month.'-'.$year);
+    $sheet->getSheetView()->setZoomScale(100);
+    $sheet->freezePane('A1');
+ 
+    $row = 1;
+ 
+    /* ---------- Letterhead ---------- */
+    $sheet->setCellValue("A{$row}", $branch->name);
+    $sheet->getStyle("A{$row}")->getFont()->setBold(true)->setSize(15);
+    $row++;
+ 
+    $sheet->setCellValue("A{$row}", "Laporan Closing Bulanan — {$period}");
+    $sheet->getStyle("A{$row}")->getFont()->setSize(10)->getColor()->setARGB('FF64748B');
+    $row++;
+ 
+    $sheet->setCellValue("A{$row}", 'Dicetak '.now()->translatedFormat('d M Y, H:i'));
+    $sheet->getStyle("A{$row}")->getFont()->setSize(9)->getColor()->setARGB('FF94A3B8');
+    $row += 2;
+ 
+    /* ---------- Ringkasan ---------- */
+    $row = $this->excelSectionTitle($sheet, $row, 'RINGKASAN', 5);
+ 
+    $summary = [
+        'Total Pendapatan' => $data['totalIncome'] ?? 0,
+        'Total Pengeluaran' => $data['totalExpense'] ?? 0,
+        'Laba / Rugi' => $data['profit'] ?? 0,
+        'Total HPP (info)' => $closing->hpp ?? 0,
+        'HPP / Meter (info)' => $closing->hpp_per_meter ?? 0,
+    ];
+ 
+    $col = 'A';
+    foreach (array_keys($summary) as $label) {
+        $sheet->setCellValue("{$col}{$row}", $label);
+        $sheet->getStyle("{$col}{$row}")->getFont()->setBold(true)->setSize(9);
+        $sheet->getStyle("{$col}{$row}")->getFill()
+            ->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FFF1F5F9');
+        $col++;
     }
+    $row++;
+ 
+    $col = 'A';
+    foreach ($summary as $label => $value) {
+        $cell = "{$col}{$row}";
+        $sheet->setCellValue($cell, $value);
+        $sheet->getStyle($cell)->getNumberFormat()->setFormatCode('"Rp" #,##0');
+        $sheet->getStyle($cell)->getFont()->setBold(true)->setSize(11);
+        if ($label === 'Laba / Rugi') {
+            $sheet->getStyle($cell)->getFont()->getColor()
+                ->setARGB($value >= 0 ? 'FF059669' : 'FFDC2626');
+        }
+        $col++;
+    }
+    $row += 3;
+ 
+    /* ---------- Detail Pemasukan ---------- */
+    $invoices = $data['invoices'] ?? collect();
+    $row = $this->excelSectionTitle($sheet, $row, 'DETAIL PEMASUKAN (INVOICE)', 5);
+    $row = $this->excelTable(
+        $sheet,
+        $row,
+        ['Tanggal', 'Customer', 'No. Invoice', 'Total', 'Status'],
+        $invoices->map(fn ($inv) => [
+            optional($inv->date)->format('d/m/Y'),
+            $inv->customer->name ?? '-',
+            $inv->invoice_number ?? '-',
+            (float) $inv->total,
+            ucfirst($inv->status ?? 'unpaid'),
+        ])->all(),
+        currencyCols: [3],
+    );
+    $row += 2;
+ 
+    /* ---------- Detail Pengeluaran ---------- */
+    $expenses = $data['expenses'] ?? collect();
+    $row = $this->excelSectionTitle($sheet, $row, 'DETAIL PENGELUARAN', 5);
+    $row = $this->excelTable(
+        $sheet,
+        $row,
+        ['Tanggal', 'Kategori', 'Deskripsi', 'Jumlah', 'Metode'],
+        $expenses->map(fn ($exp) => [
+            optional($exp->date)->format('d/m/Y'),
+            $exp->category,
+            $exp->material?->display_name ?? $exp->description,
+            (float) $exp->amount,
+            $exp->payment_method ?? '-',
+        ])->all(),
+        currencyCols: [3],
+    );
+    $row += 2;
+ 
+    /* ---------- Detail Material & Stok ---------- */
+    $materialRows = $data['materialRows'] ?? collect();
+    $row = $this->excelSectionTitle($sheet, $row, 'DETAIL MATERIAL & STOK', 8);
+    $row = $this->excelTable(
+        $sheet,
+        $row,
+        ['Material', 'Mesin', 'Satuan', 'Stok Awal', 'Pembelian', 'Pemakaian', 'Stok Akhir', 'HPP'],
+        $materialRows->map(fn ($m) => [
+            $m['material']->display_name ?? 'N/A',
+            $m['material']->machine?->name ?? '-',
+            $m['material']->unit ?? '',
+            (float) ($m['stock_awal'] ?? 0),
+            (float) ($m['purchase_value'] ?? 0),
+            (float) ($m['usage'] ?? 0),
+            (float) ($m['stock_akhir'] ?? 0),
+            (float) ($m['material_cost'] ?? 0),
+        ])->all(),
+        currencyCols: [4, 7],
+    );
+ 
+    /* ---------- Column widths ---------- */
+    foreach (range('A', 'H') as $col) {
+        $sheet->getColumnDimension($col)->setWidth(20);
+    }
+    $sheet->getColumnDimension('A')->setWidth(28);
+    $sheet->getColumnDimension('C')->setWidth(24);
+ 
+    $filename = "closing-{$branch->name}-{$year}-{$month}.xlsx";
+    $filename = str_replace(' ', '-', $filename);
+ 
+    return response()->streamDownload(function () use ($spreadsheet) {
+        $writer = new Xlsx($spreadsheet);
+        $writer->save('php://output');
+    }, $filename, [
+        'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ]);
+}
+ 
+/**
+ * 4) Tambahkan dua method PRIVATE ini di ClosingController
+ *    (di bawah exportExcel, sebelum penutup class).
+ *    Dipakai bareng buat semua section tabel di atas.
+ */
+ 
+/**
+ * Tulis judul section (baris solid gelap, teks putih, merge sepanjang $span kolom).
+ */
+private function excelSectionTitle($sheet, int $row, string $title, int $span): int
+{
+    $lastCol = chr(ord('A') + $span - 1);
+ 
+    $sheet->setCellValue("A{$row}", $title);
+    $sheet->mergeCells("A{$row}:{$lastCol}{$row}");
+    $sheet->getStyle("A{$row}")->getFont()->setBold(true)->setSize(10)->getColor()->setARGB('FFFFFFFF');
+    $sheet->getStyle("A{$row}:{$lastCol}{$row}")->getFill()
+        ->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FF0F172A');
+    $sheet->getStyle("A{$row}")->getAlignment()->setVertical(Alignment::VERTICAL_CENTER);
+    $sheet->getRowDimension($row)->setRowHeight(20);
+ 
+    return $row + 1;
+}
+ 
+/**
+ * Tulis header + baris data sebuah tabel, dengan zebra striping dan
+ * format currency ("Rp #,##0") pada kolom yang disebut di $currencyCols.
+ * Mengembalikan nomor baris berikutnya (setelah tabel selesai).
+ */
+private function excelTable($sheet, int $startRow, array $headers, array $rows, array $currencyCols = []): int
+{
+    $row = $startRow;
+    $colCount = count($headers);
+    $lastCol = chr(ord('A') + $colCount - 1);
+ 
+    // header
+    foreach ($headers as $i => $label) {
+        $col = chr(ord('A') + $i);
+        $sheet->setCellValue("{$col}{$row}", $label);
+    }
+    $sheet->getStyle("A{$row}:{$lastCol}{$row}")->getFont()->setBold(true)->setSize(9);
+    $sheet->getStyle("A{$row}:{$lastCol}{$row}")->getFill()
+        ->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FFE2E8F0');
+    $row++;
+ 
+    if (empty($rows)) {
+        $sheet->setCellValue("A{$row}", '(Tidak ada data)');
+        $sheet->mergeCells("A{$row}:{$lastCol}{$row}");
+        $sheet->getStyle("A{$row}")->getFont()->setItalic(true)->getColor()->setARGB('FF94A3B8');
+        $sheet->getStyle("A{$row}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $row++;
+    } else {
+        foreach ($rows as $r => $values) {
+            foreach ($values as $i => $value) {
+                $col = chr(ord('A') + $i);
+                $sheet->setCellValue("{$col}{$row}", $value);
+                if (in_array($i, $currencyCols, true)) {
+                    $sheet->getStyle("{$col}{$row}")->getNumberFormat()->setFormatCode('"Rp" #,##0');
+                }
+            }
+            if ($r % 2 === 1) {
+                $sheet->getStyle("A{$row}:{$lastCol}{$row}")->getFill()
+                    ->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FFF8FAFC');
+            }
+            $row++;
+        }
+    }
+ 
+    $sheet->getStyle("A{$startRow}:{$lastCol}".($row - 1))
+        ->getBorders()->getAllBorders()
+        ->setBorderStyle(Border::BORDER_THIN)->getColor()->setARGB('FFE2E8F0');
+ 
+    return $row;
+}
 }

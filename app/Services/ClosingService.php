@@ -327,6 +327,20 @@ class ClosingService
     // INCOME
     // ========================================================================
 
+    /**
+     * Total pemasukan dari invoice yang PERIODE-nya beririsan
+     * dengan rentang closing ($start - $end).
+     *
+     * PENTING:
+     * Closing pakai rentang tanggal custom (period_start/period_end),
+     * BUKAN kolom Invoice.date (yang cuma tanggal invoice dibuat/dicetak).
+     *
+     * Invoice dianggap masuk closing kalau period invoice tsb
+     * overlap dengan period closing:
+     *
+     *   invoice.period_start <= closing.end
+     *   AND invoice.period_end >= closing.start
+     */
     public function calculateIncome(
         int $branchId,
         Carbon $start,
@@ -334,10 +348,8 @@ class ClosingService
     ): float {
         return (float) Invoice::query()
             ->where('branch_id', $branchId)
-            ->whereBetween('date', [
-                $start->copy()->startOfDay(),
-                $end->copy()->endOfDay(),
-            ])
+            ->where('period_start', '<=', $end->toDateString())
+            ->where('period_end', '>=', $start->toDateString())
             ->sum('total');
     }
 
@@ -1178,6 +1190,12 @@ class ClosingService
     // HELPERS
     // ========================================================================
 
+    /**
+     * Invoice untuk periode closing ini.
+     *
+     * Sama seperti calculateIncome(), pakai overlap period_start/period_end
+     * milik invoice terhadap rentang closing — BUKAN Invoice.date.
+     */
     public function getInvoicesForPeriod(
         int $branchId,
         Carbon $start,
@@ -1188,10 +1206,8 @@ class ClosingService
             'items.product'
         )
             ->where('branch_id', $branchId)
-            ->whereBetween('date', [
-                $start->copy()->startOfDay(),
-                $end->copy()->endOfDay(),
-            ])
+            ->where('period_start', '<=', $end->toDateString())
+            ->where('period_end', '>=', $start->toDateString())
             ->get();
     }
 
@@ -1217,10 +1233,8 @@ class ClosingService
     ): Collection {
         return Invoice::query()
             ->where('branch_id', $branchId)
-            ->whereBetween('date', [
-                $start->copy()->startOfDay(),
-                $end->copy()->endOfDay(),
-            ])
+            ->where('period_start', '<=', $end->toDateString())
+            ->where('period_end', '>=', $start->toDateString())
             ->with('customer')
             ->get()
             ->groupBy(
