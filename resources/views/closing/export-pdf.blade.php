@@ -99,7 +99,7 @@
             </td>
             <td>
                 <div class="stat-label">Total Pemasukan</div>
-                <div class="stat-value">Rp {{ number_format($closing->hpp,0,',','.') }}</div>
+                <div class="stat-value">Rp {{ number_format($totalIncome, 0, ',', '.') }}</div>
             </td>
             <td>
                 <div class="stat-label">HPP / Meter</div>

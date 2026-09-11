@@ -363,7 +363,14 @@
                                                    text-[#64748B]
                                                    dark:text-[#94A3B8]"
                                         >
-                                            Saldo:
+                                            Tahanan:
+                                            Rp {{ number_format(
+                                                $lockedPeriod->saldo_tahanan ?? 0,
+                                                0,
+                                                ',',
+                                                '.'
+                                            ) }}
+                                            &middot; Realtime:
                                             Rp {{ number_format(
                                                 $lockedPeriod->saldo_realtime ?? 0,
                                                 0,
@@ -657,8 +664,20 @@
                                text-[#94A3B8]
                                dark:text-[#64748B]"
                     >
-                        Saldo permanen cabang
+                        Saldo tahanan periode
                     </p>
+
+                    @if(!$saldoRealtimeLocked)
+                        <button
+                            type="button"
+                            onclick="document.getElementById('saldoRealtimeModal').classList.remove('hidden')"
+                            class="mt-2 text-xs font-semibold
+                                   text-blue-600 hover:text-blue-700
+                                   dark:text-blue-400"
+                        >
+                            Edit saldo periode
+                        </button>
+                    @endif
 
                 </div>
 
@@ -1062,7 +1081,7 @@
                                        text-[#0F172A]
                                        dark:text-[#F8FAFC]"
                             >
-                                Saldo Realtime Periode
+                                Saldo Periode
                             </h2>
 
 
@@ -1143,8 +1162,8 @@
                                        text-[#94A3B8]
                                        dark:text-[#64748B]"
                             >
-                                Rentang periode lain otomatis
-                                dimulai kembali dari Rp0.
+                                Saldo Tahanan dan Saldo Realtime disimpan
+                                khusus untuk periode ini.
                             </p>
 
                         @endif
@@ -1187,7 +1206,7 @@
                         <form
                             method="POST"
                             action="{{ route('ledger.realtime.lock') }}"
-                            onsubmit="return confirm('Kunci Saldo Realtime periode ini? Setelah dikunci nilainya tidak dapat diubah lagi.');"
+                            onsubmit="return confirm('Kunci saldo periode ini? Saldo Tahanan dan Saldo Realtime tidak dapat diubah lagi setelah dikunci.');"
                         >
 
                             @csrf
@@ -1674,7 +1693,7 @@
 
 
 {{-- =============================================================
-    MODAL UPDATE SALDO REALTIME
+    MODAL UPDATE SALDO PERIODE
 ============================================================== --}}
 @if(!$saldoRealtimeLocked)
 
@@ -1719,7 +1738,7 @@
                                    text-[#0F172A]
                                    dark:text-[#F8FAFC]"
                         >
-                            Update Saldo Realtime
+                            Update Saldo Periode
                         </h3>
 
 
@@ -1784,15 +1803,61 @@
                 >
 
 
-                <div class="p-5">
+                <div class="p-5 space-y-5">
 
-                    <label
-                        class="mb-2 block text-sm
-                               font-semibold text-[#0F172A]
-                               dark:text-[#F8FAFC]"
-                    >
-                        Saldo Realtime
-                    </label>
+                    <div>
+                        <label
+                            class="mb-2 block text-sm
+                                   font-semibold text-[#0F172A]
+                                   dark:text-[#F8FAFC]"
+                        >
+                            Saldo Tahanan
+                        </label>
+
+                        <div class="relative">
+
+                            <span
+                                class="absolute left-4 top-1/2
+                                       -translate-y-1/2
+                                       text-sm font-medium
+                                       text-[#64748B]"
+                            >
+                                Rp
+                            </span>
+
+                            <input
+                                type="number"
+                                name="saldo_tahanan"
+                                value="{{ old('saldo_tahanan', $saldoTahanan) }}"
+                                min="0"
+                                step="1"
+                                required
+                                class="w-full rounded-xl
+                                       border border-[#E2E8F0]
+                                       bg-white py-3
+                                       pl-12 pr-4
+                                       text-lg font-semibold
+                                       text-[#0F172A]
+                                       outline-none
+                                       focus:border-[#2563EB]
+                                       focus:ring-2
+                                       focus:ring-[#2563EB]/20
+                                       dark:border-[#253247]
+                                       dark:bg-[#0B1220]
+                                       dark:text-[#F8FAFC]"
+                            >
+
+                        </div>
+                    </div>
+
+                    <div>
+                        <label
+                            class="mb-2 block text-sm
+                                   font-semibold text-[#0F172A]
+                                   dark:text-[#F8FAFC]"
+                        >
+                            Saldo Realtime
+                        </label>
 
 
                     <div class="relative">
@@ -1810,7 +1875,7 @@
                         <input
                             type="number"
                             name="saldo_realtime"
-                            value="{{ $saldoRealtime }}"
+                            value="{{ old('saldo_realtime', $saldoRealtime) }}"
                             min="0"
                             step="1"
                             required
@@ -1830,17 +1895,17 @@
                         >
 
                     </div>
+                    </div>
 
 
                     <p
-                        class="mt-2 text-xs
+                        class="text-xs
                                text-[#94A3B8]
                                dark:text-[#64748B]"
                     >
-                        Saldo ini khusus untuk periode
-                        yang sedang dipilih.
-                        Setelah dikunci nilainya
-                        tidak dapat diubah.
+                        Saldo Tahanan dan Saldo Realtime khusus untuk
+                        periode yang sedang dipilih. Setelah periode dikunci,
+                        keduanya tidak dapat diubah.
                     </p>
 
                 </div>
@@ -1878,7 +1943,7 @@
                                text-white transition
                                hover:bg-[#1D4ED8]"
                     >
-                        Simpan Saldo
+                        Simpan Saldo Periode
                     </button>
 
                 </div>
