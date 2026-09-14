@@ -78,12 +78,31 @@
                         <td class="p-4 font-medium text-[#0F172A] dark:text-[#F8FAFC]">
                             {{ $c->period_start?->format('d/m/Y') ?? \Carbon\Carbon::create()->month((int) $c->month)->startOfMonth()->format('d/m/Y') }} - {{ $c->period_end?->format('d/m/Y') ?? \Carbon\Carbon::create()->month((int) $c->month)->endOfMonth()->format('d/m/Y') }}
                         </td>
-                        <td class="p-4 text-right text-[#0F172A] dark:text-[#F8FAFC]">Rp {{ number_format($c->income,0,',','.') }}</td>
-                        <td class="p-4 text-right text-[#0F172A] dark:text-[#F8FAFC]">Rp {{ number_format($c->expense,0,',','.') }}</td>
-                        <td class="p-4 text-right text-[#0F172A] dark:text-[#F8FAFC]">Rp {{ number_format($c->hpp,0,',','.') }}</td>
-                        <td class="p-4 text-right text-[#0F172A] dark:text-[#F8FAFC]">Rp {{ number_format($c->hpp_per_meter,0,',','.') }}</td>
-                        <td class="p-4 text-right font-semibold {{ $c->profit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400' }}">
-                            Rp {{ number_format($c->profit,0,',','.') }}
+                        @php
+                            // Data ini dihitung controller dengan getData() yang sama
+                            // seperti halaman Show dan memakai periode milik $c sendiri.
+                            $rowData = $closingDataMap[$c->id] ?? null;
+
+                            $rowIncome = (float) ($rowData['totalIncome'] ?? $c->income ?? 0);
+                            $rowExpense = (float) ($rowData['totalExpense'] ?? $c->expense ?? 0);
+                            $rowProfit = (float) ($rowData['profit'] ?? $c->profit ?? 0);
+                            $rowTotalHpp = (float) ($rowData['totalHpp'] ?? $c->hpp ?? 0);
+                            $rowHppPerMeter = (float) ($rowData['totalRpMeter'] ?? $c->hpp_per_meter ?? 0);
+                        @endphp
+                        <td class="p-4 text-right text-[#0F172A] dark:text-[#F8FAFC]">
+                            Rp {{ number_format($rowIncome,0,',','.') }}
+                        </td>
+                        <td class="p-4 text-right text-[#0F172A] dark:text-[#F8FAFC]">
+                            Rp {{ number_format($rowExpense,0,',','.') }}
+                        </td>
+                        <td class="p-4 text-right text-[#0F172A] dark:text-[#F8FAFC]">
+                            Rp {{ number_format($rowTotalHpp,0,',','.') }}
+                        </td>
+                        <td class="p-4 text-right text-[#0F172A] dark:text-[#F8FAFC]">
+                            Rp {{ number_format($rowHppPerMeter,0,',','.') }}
+                        </td>
+                        <td class="p-4 text-right font-semibold {{ $rowProfit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400' }}">
+                            Rp {{ number_format($rowProfit,0,',','.') }}
                         </td>
                         <td class="p-4 text-center">
                             @if($c->is_locked)

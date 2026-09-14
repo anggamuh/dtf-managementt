@@ -968,75 +968,80 @@ class ClosingService
         Carbon $start,
         Carbon $end
     ): void {
-        $closing->loadMissing(
-            'materials'
-        );
+        $start = $start->copy()->startOfDay();
+        $end = $end->copy()->endOfDay();
 
         /*
-         * Total biaya material.
+         * SINGLE SOURCE OF TRUTH:
+         * materialRows yang dipakai untuk menyimpan snapshot HPP harus sama
+         * dengan materialRows yang dipakai pada tabel Rincian HPP / Meter.
+         * Dengan begitu qty pembelian selalu berasal dari Expense Bahan Baku
+         * pada periode closing, bukan dari rumus lain yang terpisah.
          */
-        $materialCost = $closing->materials->sum(
-            function ($component) {
-                $stockAwal = (float) $component->stock_awal;
-                $pembelian = (float) $component->qty;
-                $stockAkhir = (float) $component->stock_akhir;
-                $harga = (float) $component->harga_komponen;
+        $materialRows = $this->getMaterialRows(
+            (int) $closing->branch_id,
+            $start,
+            $end,
+            $closing
+        );
 
-                $pemakaian = max(
-                    0,
-                    $stockAwal
-                    + $pembelian
-                    - $stockAkhir
-                );
-
-                return $pemakaian * $harga;
-            }
+        $hppData = $this->buildHppRows(
+            (int) $closing->branch_id,
+            $start,
+            $end,
+            $closing,
+            $materialRows
         );
 
         /*
          * Nilai Stock Opname (SO):
-         * Stock Akhir x Harga Manual.
+         * Stock Akhir x Harga Manual yang sama dengan materialRows.
          */
-        $remainingMaterial = $closing->materials->sum(
-            fn ($component) => (float) $component->stock_akhir
-                * (float) $component->harga_komponen
+        $remainingMaterial = (float) $materialRows->sum(
+            fn ($row) => (float) ($row['stock_akhir'] ?? 0)
+                * (float) ($row['unit_cost'] ?? 0)
         );
-
-        /*
-         * Total biaya tetap.
-         */
-        $fixedCost =
-            (float) ($closing->gaji_karyawan ?? 0)
-            + (float) ($closing->operasional ?? 0)
-            + (float) ($closing->lain_lain ?? 0)
-            + (float) ($closing->teknisi_mesin ?? 0);
-
-        /*
-         * Total HPP.
-         */
-        $hpp = $materialCost + $fixedCost;
-
-        /*
-         * HASIL CETAK DARI ORDER.
-         */
-        $hasilCetak = $this->calculateHasilCetak(
-            $closing->branch_id,
-            $start,
-            $end
-        );
-
-        /*
-         * HPP per meter.
-         */
-        $hppPerMeter = $hasilCetak > 0
-            ? $hpp / $hasilCetak
-            : 0;
 
         $closing->update([
-            'hpp' => $hpp,
-            'hpp_per_meter' => $hppPerMeter,
+            'hpp' => (float) ($hppData['totalHpp'] ?? 0),
+            'hpp_per_meter' => (float) ($hppData['totalRpMeter'] ?? 0),
             'remaining_material' => $remainingMaterial,
         ]);
+    }
+
+    /**
+     * Ambil HPP sebuah closing memakai periode dan branch milik closing itu
+     * sendiri. Method ini dipakai oleh index/show/export agar EPUL dan RAFLI
+     * selalu memakai rumus yang identik.
+     */
+    public function getHppForClosing(Closing $closing): array
+    {
+        $start = $closing->period_start
+            ? Carbon::parse($closing->period_start)->startOfDay()
+            : Carbon::create(
+                (int) $closing->year,
+                (int) $closing->month,
+                1
+            )->startOfMonth()->startOfDay();
+
+        $end = $closing->period_end
+            ? Carbon::parse($closing->period_end)->endOfDay()
+            : (clone $start)->endOfMonth()->endOfDay();
+
+        $materialRows = $this->getMaterialRows(
+            (int) $closing->branch_id,
+            $start,
+            $end,
+            $closing
+        );
+
+        return $this->buildHppRows(
+            (int) $closing->branch_id,
+            $start,
+            $end,
+            $closing,
+            $materialRows
+        );
     }
 
     // ========================================================================
@@ -1191,11 +1196,18 @@ class ClosingService
             ->values();
 
         /*
-         * Total Rp/Meter.
+         * Total HPP dan HPP/Meter berasal dari kumpulan baris yang sama
+         * dengan tabel Rincian HPP / Meter. Jangan menjumlahkan hasil yang
+         * sudah dibagi per baris sebagai sumber utama; hitung sekali dari
+         * total HPP agar tidak ada selisih pembulatan/floating point.
          */
-        $totalRpMeter = $hppAllRows->sum(
-            'rpMeter'
+        $totalHpp = (float) $hppAllRows->sum(
+            'totalHarga'
         );
+
+        $totalRpMeter = $hasilCetak > 0
+            ? $totalHpp / $hasilCetak
+            : 0;
 
         return [
             /*
@@ -1211,6 +1223,8 @@ class ClosingService
             'fixedRows' => $hppFixedRows,
 
             'allRows' => $hppAllRows,
+
+            'totalHpp' => $totalHpp,
 
             'totalRpMeter' => $totalRpMeter,
         ];

@@ -57,7 +57,7 @@
             <div class="flex items-start justify-between">
                 <div>
                     <p class="text-xs font-medium uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">Total HPP <span class="normal-case font-normal">(info)</span></p>
-                    <p class="mt-2 text-2xl font-bold text-[#0F172A] dark:text-[#F8FAFC]">Rp {{ number_format($closing->hpp,0,',','.') }}</p>
+                    <p class="mt-2 text-2xl font-bold text-[#0F172A] dark:text-[#F8FAFC]">Rp {{ number_format((float) ($hpp['totalHpp'] ?? 0),0,',','.') }}</p>
                 </div>
                 <div class="app-icon bg-slate-100 text-slate-600 dark:bg-[#172033] dark:text-slate-300">
                     <x-heroicon-o-currency-dollar class="h-6 w-6"/>
@@ -68,7 +68,7 @@
             <div class="flex items-start justify-between">
                 <div>
                     <p class="text-xs font-medium uppercase tracking-wide text-[#64748B] dark:text-[#94A3B8]">HPP / Meter</p>
-                    <p class="mt-2 text-2xl font-bold text-[#0F172A] dark:text-[#F8FAFC]">Rp {{ number_format($closing->hpp_per_meter,0,',','.') }}</p>
+                    <p class="mt-2 text-2xl font-bold text-[#0F172A] dark:text-[#F8FAFC]">Rp {{ number_format((float) ($hpp['totalRpMeter'] ?? 0),0,',','.') }}</p>
                 </div>
                 <div class="app-icon bg-slate-100 text-slate-600 dark:bg-[#172033] dark:text-slate-300">
                     <x-heroicon-o-scale class="h-6 w-6"/>
@@ -360,7 +360,7 @@
             <h2 class="text-lg font-bold text-[#0F172A] dark:text-[#F8FAFC]">Rincian HPP / Meter</h2>
             <p class="text-xs text-[#64748B] mt-1 dark:text-[#94A3B8]">
                 Hasil Cetak: {{ number_format($hpp['hasilCetak'],2,',','.') }} m
-                (dari total qty invoice) &middot; <span class="italic">Metrik informasi, tidak memengaruhi Laba/Rugi</span>
+                (dari total qty order) &middot; <span class="italic">Metrik informasi, tidak memengaruhi Laba/Rugi</span>
             </p>
         </div>
         <div class="overflow-x-auto">
@@ -478,11 +478,11 @@
                 </div>
                 <div class="flex justify-between text-sm">
                     <span class="text-[#64748B] dark:text-[#94A3B8]">HPP / Meter <span class="text-[10px] italic">(info)</span></span>
-                    <span class="font-medium text-[#0F172A] dark:text-[#F8FAFC]">Rp {{ number_format($closing->hpp_per_meter, 0, ',', '.') }}</span>
+                    <span class="font-medium text-[#0F172A] dark:text-[#F8FAFC]">Rp {{ number_format((float) ($hpp['totalRpMeter'] ?? 0), 0, ',', '.') }}</span>
                 </div>
                 <div class="flex justify-between text-sm pt-2 border-t border-[#E2E8F0] dark:border-[#253247]">
                     <span class="font-semibold text-[#0F172A] dark:text-[#F8FAFC]">Total HPP <span class="text-[10px] font-normal italic">(info, tidak memengaruhi laba)</span></span>
-                    <span class="font-bold text-[#0F172A] dark:text-[#F8FAFC]">Rp {{ number_format($closing->hpp, 0, ',', '.') }}</span>
+                    <span class="font-bold text-[#0F172A] dark:text-[#F8FAFC]">Rp {{ number_format((float) ($hpp['totalHpp'] ?? 0), 0, ',', '.') }}</span>
                 </div>
             </div>
         </div>
