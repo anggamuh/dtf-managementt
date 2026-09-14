@@ -25,7 +25,7 @@
                            class="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
                 </label>
 
-                <div class="border-t border-slate-100 pt-5">
+                <div id="password" class="border-t border-slate-100 pt-5">
                     <p class="text-sm font-medium text-slate-700 mb-4 dark:text-slate-200">Ubah Password</p>
                     <div class="space-y-4">
                         <label class="block">

@@ -349,4 +349,9 @@ Route::delete(
         '/ledger/realtime/lock',
         [LedgerController::class, 'lockRealtime']
     )->name('ledger.realtime.lock');
+
+    Route::post(
+        '/ledger/saldo-tahanan',
+        [LedgerController::class, 'updateSaldoTahanan']
+    )->name('ledger.saldo-tahanan.update');
 });

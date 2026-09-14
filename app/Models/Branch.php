@@ -11,9 +11,13 @@ class Branch extends Model
         'name',
         'code',
         'active',
+        'saldo_tahanan',
     ];
 
-    protected $casts = ['active' => 'boolean'];
+    protected $casts = [
+        'active' => 'boolean',
+        'saldo_tahanan' => 'decimal:2',
+    ];
 
     public function users(): HasMany
     {

@@ -88,7 +88,7 @@
                             class="rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5 text-sm focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB] outline-none transition dark:border-[#253247] dark:bg-[#111827] dark:text-[#F8FAFC] dark:[color-scheme:dark]">
                     </div>
                 </div>
-                <button type="submit" class="rounded-xl bg-[#0F172A] px-5 py-2.5 text-white text-sm font-medium hover:bg-[#1E293B] transition-all duration-200 shadow-sm dark:bg-[#F8FAFC] dark:text-[#0F172A] dark:hover:bg-white">
+                <button type="submit" class="rounded-xl bg-[#0F172A] px-5 py-2.5 text-white text-sm font-medium hover:bg-[#1E293B] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 transition-all duration-200 shadow-sm dark:bg-[#111827] dark:text-[#F8FAFC] dark:ring-1 dark:ring-inset dark:ring-[#253247] dark:hover:bg-[#172033] dark:focus:ring-2 dark:focus:ring-[#3B82F6]/30">
                     <svg class="w-4 h-4 inline mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 01-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/>
                     </svg>

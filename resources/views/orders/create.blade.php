@@ -87,7 +87,7 @@
 
                 <div class="mt-6">
                     <button type="button" onclick="addToDraft()"
-                            class="inline-flex items-center gap-2 rounded-xl bg-slate-800 px-5 py-2.5 text-white text-sm font-medium hover:bg-slate-700 transition-all duration-200 shadow-sm dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white">
+                            class="inline-flex items-center gap-2 rounded-xl bg-slate-800 px-5 py-2.5 text-white text-sm font-medium hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all duration-200 shadow-sm dark:bg-[#111827] dark:text-[#F8FAFC] dark:ring-1 dark:ring-inset dark:ring-[#253247] dark:hover:bg-[#172033] dark:focus:ring-2 dark:focus:ring-blue-500/30">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
                         </svg>

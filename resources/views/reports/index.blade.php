@@ -16,7 +16,7 @@
 
         <input type="hidden" name="branch_id" value="{{ $branchId }}">
 
-        <button class="inline-flex items-center gap-2 rounded-xl bg-slate-800 px-5 py-2.5 text-white text-sm font-medium hover:bg-slate-700 transition-all duration-200 shadow-sm">
+        <button class="inline-flex items-center gap-2 rounded-xl bg-[#0F172A] px-5 py-2.5 text-white text-sm font-medium hover:bg-[#1E293B] focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all duration-200 shadow-sm dark:bg-[#111827] dark:text-[#F8FAFC] dark:ring-1 dark:ring-inset dark:ring-[#253247] dark:hover:bg-[#172033] dark:focus:ring-2 dark:focus:ring-blue-500/30">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/>
             </svg>
@@ -53,11 +53,11 @@
             </thead>
             <tbody>
                 @forelse($rows as $row)
-                    <tr class="border-b border-slate-100 hover:bg-slate-50/50 transition-colors duration-150">
+                    <tr class="border-b border-slate-100 hover:bg-slate-50/50 transition-colors duration-150 dark:border-slate-700 dark:hover:bg-slate-700/40">
                         <td class="p-4">{{ $row['date'] }}</td>
                         <td class="p-4">{{ $row['name'] }}</td>
                         <td class="p-4">
-                            <span class="inline-flex rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700 dark:text-slate-100">
+                            <span class="inline-flex rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700 dark:bg-slate-700 dark:text-slate-100">
                                 {{ $row['status'] }}
                             </span>
                         </td>

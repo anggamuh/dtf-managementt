@@ -134,9 +134,11 @@
                            px-5 py-2.5 text-sm font-medium
                            text-white transition
                            hover:bg-[#1E293B]
-                           dark:bg-[#F8FAFC]
-                           dark:text-[#0F172A]
-                           dark:hover:bg-white"
+                           focus:outline-none focus:ring-2 focus:ring-blue-500/20
+                           dark:bg-[#111827]
+                           dark:text-[#F8FAFC]
+                           dark:ring-1 dark:ring-inset dark:ring-[#253247]
+                           dark:hover:bg-[#172033] dark:focus:ring-2 dark:focus:ring-blue-500/30"
                 >
                     Tampilkan
                 </button>
@@ -664,14 +666,27 @@
 
 
                 <div
-                    class="app-icon bg-blue-50
-                           text-blue-600
-                           dark:bg-blue-500/10
-                           dark:text-blue-400"
+                    class="flex items-center gap-2"
                 >
-                    <x-heroicon-o-credit-card
-                        class="h-6 w-6"
-                    />
+                    <button
+                        type="button"
+                        onclick="document.getElementById('saldoTahananModal').classList.remove('hidden')"
+                        class="inline-flex items-center gap-2 rounded-lg border border-[#E2E8F0] bg-white px-2.5 py-2 text-xs font-semibold text-[#0F172A] shadow-sm transition hover:bg-[#F8FAFC] dark:border-[#253247] dark:bg-[#172033] dark:text-[#F8FAFC] dark:hover:bg-[#1E293B]"
+                    >
+                        <x-heroicon-o-pencil-square class="h-3.5 w-3.5" />
+                        Edit
+                    </button>
+
+                    <div
+                        class="app-icon bg-blue-50
+                               text-blue-600
+                               dark:bg-blue-500/10
+                               dark:text-blue-400"
+                    >
+                        <x-heroicon-o-credit-card
+                            class="h-6 w-6"
+                        />
+                    </div>
                 </div>
 
             </div>
@@ -1219,9 +1234,11 @@
                                        text-sm font-semibold
                                        text-white transition
                                        hover:bg-[#1E293B]
-                                       dark:bg-[#F8FAFC]
-                                       dark:text-[#0F172A]
-                                       dark:hover:bg-white"
+                                       focus:outline-none focus:ring-2 focus:ring-blue-500/20
+                                       dark:bg-[#111827]
+                                       dark:text-[#F8FAFC]
+                                       dark:ring-1 dark:ring-inset dark:ring-[#253247]
+                                       dark:hover:bg-[#172033] dark:focus:ring-2 dark:focus:ring-blue-500/30"
                             >
 
                                 <x-heroicon-o-lock-closed
@@ -1669,6 +1686,90 @@
 
     </div>
 
+</div>
+
+
+
+{{-- =============================================================
+    MODAL UPDATE SALDO TAHANAN
+============================================================== --}}
+<div
+    id="saldoTahananModal"
+    class="fixed inset-0 z-[100] hidden overflow-y-auto"
+>
+    <div
+        class="fixed inset-0 bg-black/40 backdrop-blur-sm"
+        onclick="document.getElementById('saldoTahananModal').classList.add('hidden')"
+    ></div>
+
+    <div class="relative flex min-h-full items-center justify-center p-4">
+        <div class="relative w-full max-w-md rounded-2xl border border-[#E2E8F0] bg-white shadow-2xl dark:border-[#253247] dark:bg-[#111827]">
+            <div class="border-b border-[#E2E8F0] p-5 dark:border-[#253247]">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h3 class="text-lg font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+                            Update Saldo Tahanan
+                        </h3>
+                        <p class="mt-1 text-xs text-[#64748B] dark:text-[#94A3B8]">
+                            {{ $branchName ?: 'Cabang' }}
+                        </p>
+                    </div>
+
+                    <button
+                        type="button"
+                        onclick="document.getElementById('saldoTahananModal').classList.add('hidden')"
+                        class="rounded-lg p-2 text-[#64748B] hover:bg-[#F8FAFC] dark:text-[#94A3B8] dark:hover:bg-[#172033]"
+                    >
+                        <x-heroicon-o-x-mark class="h-5 w-5" />
+                    </button>
+                </div>
+            </div>
+
+            <form method="POST" action="{{ route('ledger.saldo-tahanan.update') }}">
+                @csrf
+
+                <input type="hidden" name="branch_id" value="{{ $branchId }}">
+                <input type="hidden" name="start_date" value="{{ $startDate }}">
+                <input type="hidden" name="end_date" value="{{ $endDate }}">
+
+                <div class="p-5">
+                    <label class="mb-2 block text-sm font-semibold text-[#0F172A] dark:text-[#F8FAFC]">
+                        Saldo Tahanan
+                    </label>
+
+                    <div class="relative">
+                        <span class="absolute left-4 top-1/2 -translate-y-1/2 text-[#64748B] dark:text-[#94A3B8]">Rp</span>
+                        <input
+                            type="number"
+                            name="saldo_tahanan"
+                            value="{{ number_format($saldoTahanan, 2, '.', '') }}"
+                            min="0"
+                            step="1000"
+                            class="w-full rounded-xl border border-[#E2E8F0] bg-white py-3 pl-11 pr-4 text-sm text-[#0F172A] outline-none transition focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/20 dark:border-[#253247] dark:bg-[#111827] dark:text-[#F8FAFC]"
+                            required
+                        >
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-end gap-3 border-t border-[#E2E8F0] p-5 dark:border-[#253247]">
+                    <button
+                        type="button"
+                        onclick="document.getElementById('saldoTahananModal').classList.add('hidden')"
+                        class="rounded-xl border border-[#E2E8F0] bg-white px-4 py-2.5 text-sm font-semibold text-[#0F172A] hover:bg-[#F8FAFC] dark:border-[#253247] dark:bg-[#172033] dark:text-[#F8FAFC] dark:hover:bg-[#1E293B]"
+                    >
+                        Batal
+                    </button>
+
+                    <button
+                        type="submit"
+                        class="rounded-xl bg-[#0F172A] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#1E293B] dark:bg-[#111827] dark:text-[#F8FAFC] dark:hover:bg-[#172033]"
+                    >
+                        Simpan
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
 </div>
 
 

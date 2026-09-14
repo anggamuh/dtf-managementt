@@ -67,7 +67,7 @@
             </div>
         </div>
         <input type="hidden" name="branch_id" value="{{ $branchId }}">
-        <button class="rounded-xl bg-[#0F172A] px-5 py-2.5 text-white text-sm font-medium hover:bg-[#1E293B] transition-all duration-200 shadow-sm dark:bg-[#F8FAFC] dark:text-[#0F172A] dark:hover:bg-white">Filter</button>
+        <button class="rounded-xl bg-[#0F172A] px-5 py-2.5 text-white text-sm font-medium hover:bg-[#1E293B] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 transition-all duration-200 shadow-sm dark:bg-[#111827] dark:text-[#F8FAFC] dark:ring-1 dark:ring-inset dark:ring-[#253247] dark:hover:bg-[#172033] dark:focus:ring-2 dark:focus:ring-[#3B82F6]/30">Filter</button>
         @if(request()->hasAny(['search','status','date_start','date_end']))
             <a href="{{ route('orders.index', ['branch_id' => $branchId]) }}"
                class="rounded-xl px-4 py-2.5 text-sm font-medium text-[#64748B] hover:text-[#0F172A] transition-all duration-200 dark:text-[#94A3B8] dark:hover:text-[#F8FAFC]">Reset</a>

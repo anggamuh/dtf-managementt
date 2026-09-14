@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\Concerns\ResolvesBranch;
+use App\Models\Branch;
 use App\Models\Closing;
 use App\Models\Expense;
 use App\Models\Invoice;
@@ -78,11 +79,16 @@ class LedgerController extends Controller
         |
         */
 
-        $saldoTahanan = match ((int) $branchId) {
-            1 => 20_000_000,
-            2 => 10_000_000,
-            default => 0,
-        };
+        $branch = Branch::query()->find($branchId);
+
+        $saldoTahanan = (float) (
+            $branch?->saldo_tahanan
+            ?? match ((int) $branchId) {
+                1 => 20_000_000,
+                2 => 10_000_000,
+                default => 0,
+            }
+        );
 
 
         /*
@@ -755,6 +761,55 @@ class LedgerController extends Controller
             $start,
             $end,
             'Saldo realtime periode berhasil dikunci.'
+        );
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | UPDATE SALDO TAHANAN
+    |--------------------------------------------------------------------------
+    */
+
+    public function updateSaldoTahanan(
+        Request $request
+    ) {
+        $branchId =
+            $this->branchId($request);
+
+        $validated = $request->validate([
+            'saldo_tahanan' => [
+                'required',
+                'numeric',
+                'min:0',
+            ],
+        ]);
+
+        abort_if(
+            $branchId === 0,
+            422,
+            'Pilih cabang terlebih dahulu.'
+        );
+
+        $branch = Branch::query()->findOrFail($branchId);
+
+        $branch->update([
+            'saldo_tahanan' => (float) $validated['saldo_tahanan'],
+        ]);
+
+        $start = $request->input('start_date')
+            ? Carbon::parse($request->input('start_date'))->startOfDay()
+            : now()->startOfMonth()->startOfDay();
+
+        $end = $request->input('end_date')
+            ? Carbon::parse($request->input('end_date'))->endOfDay()
+            : now()->endOfMonth()->endOfDay();
+
+        return $this->redirectToPeriod(
+            $branchId,
+            $start,
+            $end,
+            'Saldo tahanan cabang berhasil diperbarui.'
         );
     }
 

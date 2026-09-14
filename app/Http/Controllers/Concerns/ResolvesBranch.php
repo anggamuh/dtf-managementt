@@ -15,20 +15,35 @@ trait ResolvesBranch
 
     protected function branchId(Request $request): int
     {
-        // 1. Query string takes precedence (for switching branches)
-        if ($request->has('branch_id')) {
-            $request->session()->put('selected_branch_id', (int) $request->input('branch_id'));
+        $requestBranchId = $request->input('branch_id');
+
+        if ($request->has('branch_id') && $requestBranchId !== null && $requestBranchId !== '') {
+            $id = (int) $requestBranchId;
+
+            if ($id !== 0 && ! Branch::whereKey($id)->where('active', true)->exists()) {
+                $request->session()->forget('selected_branch_id');
+                throw ValidationException::withMessages(['branch_id' => 'Cabang yang dipilih tidak valid atau tidak aktif.']);
+            }
+
+            if (! $this->canAccessAllBranches() && $id !== 0 && $id !== (int) auth()->user()->branch_id) {
+                throw ValidationException::withMessages(['branch_id' => 'Anda tidak dapat mengakses cabang ini.']);
+            }
+
+            $request->session()->put('selected_branch_id', $id);
         }
 
-        // 2. Fallback to session, then user's default branch
-        $id = (int) $request->session()->get('selected_branch_id', auth()->user()->branch_id);
+        $id = (int) $request->session()->get('selected_branch_id', auth()->user()->branch_id ?? 0);
 
         if ($id !== 0 && ! Branch::whereKey($id)->where('active', true)->exists()) {
             $request->session()->forget('selected_branch_id');
             throw ValidationException::withMessages(['branch_id' => 'Cabang yang dipilih tidak valid atau tidak aktif.']);
         }
 
-        // 3. Authorization check: non-admin users can only access their own branch
+        if ($id === 0 && ! $this->canAccessAllBranches()) {
+            $request->session()->forget('selected_branch_id');
+            throw ValidationException::withMessages(['branch_id' => 'Pilih cabang tertentu sebelum melanjutkan.']);
+        }
+
         if (! $this->canAccessAllBranches() && $id !== (int) auth()->user()->branch_id) {
             throw ValidationException::withMessages(['branch_id' => 'Anda tidak dapat mengakses cabang ini.']);
         }

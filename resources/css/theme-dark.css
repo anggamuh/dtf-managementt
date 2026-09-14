@@ -119,10 +119,12 @@
 .bg-slate-50, .bg-slate-50\/80, .bg-slate-50\/50, .bg-slate-50\/60 { background-color: var(--bg-surface-hover) !important; }
 .bg-slate-100 { background-color: var(--bg-surface-2) !important; }
 .bg-slate-200 { background-color: var(--border-color) !important; }
-.bg-slate-800 { background-color: var(--bg-surface-2) !important; }
 .bg-slate-800\/50 { background-color: color-mix(in srgb, var(--bg-surface-2) 50%, transparent) !important; }
 .bg-slate-900 { background-color: var(--bg-page) !important; }
 .bg-slate-950 { background-color: var(--bg-page) !important; }
+.bg-gray-50 { background-color: var(--bg-surface-hover) !important; }
+.bg-gray-100 { background-color: var(--bg-surface-2) !important; }
+.bg-gray-200 { background-color: var(--border-color) !important; }
 
 /* Primary soft backgrounds */
 .bg-blue-50 { background-color: var(--primary-soft) !important; }
@@ -133,40 +135,48 @@
 /* Success soft backgrounds */
 .bg-emerald-50 { background-color: var(--success-soft) !important; }
 .bg-emerald-100 { background-color: var(--success-soft) !important; }
+.bg-green-50, .bg-green-100 { background-color: var(--success-soft) !important; }
 .bg-emerald-600 { background-color: var(--success) !important; }
 .bg-emerald-700 { background-color: var(--success) !important; }
 
 /* Danger soft backgrounds */
 .bg-rose-50 { background-color: var(--danger-soft) !important; }
 .bg-rose-100 { background-color: var(--danger-soft) !important; }
+.bg-red-50, .bg-red-100 { background-color: var(--danger-soft) !important; }
 .bg-rose-600 { background-color: var(--danger) !important; }
 .bg-rose-700 { background-color: var(--danger) !important; }
 
 /* Warning soft backgrounds */
 .bg-amber-50 { background-color: var(--warning-soft) !important; }
 .bg-amber-100 { background-color: var(--warning-soft) !important; }
+.bg-yellow-50, .bg-yellow-100 { background-color: var(--warning-soft) !important; }
 .bg-amber-600 { background-color: var(--warning) !important; }
 
 /* Info soft backgrounds */
 .bg-cyan-50 { background-color: var(--info-soft) !important; }
 .bg-sky-50 { background-color: var(--info-soft) !important; }
+.bg-indigo-50 { background-color: var(--primary-soft) !important; }
 
 /* Violet (for pesanan icon) */
 .bg-violet-50 { background-color: #F5F3FF !important; }
 .dark .bg-violet-50 { background-color: rgba(139, 92, 246, 0.1) !important; }
 .bg-violet-100 { background-color: #EDE9FE !important; }
 .dark .bg-violet-100 { background-color: rgba(139, 92, 246, 0.15) !important; }
+.bg-purple-100 { background-color: #F3E8FF !important; }
+.dark .bg-purple-100 { background-color: rgba(168, 85, 247, 0.15) !important; }
 
 /* Hover states */
 .hover\:bg-slate-50:hover, .hover\:bg-slate-50\/50:hover { background-color: var(--bg-surface-hover) !important; }
 .hover\:bg-slate-100:hover { background-color: var(--bg-surface-2) !important; }
-.hover\:bg-slate-800:hover { background-color: var(--bg-surface-hover) !important; }
 .hover\:bg-blue-50:hover { background-color: var(--primary-soft) !important; }
 .hover\:bg-emerald-50:hover { background-color: var(--success-soft) !important; }
 .hover\:bg-rose-50:hover { background-color: var(--danger-soft) !important; }
 .hover\:bg-amber-50:hover { background-color: var(--warning-soft) !important; }
 .hover\:bg-rose-700:hover { background-color: var(--danger) !important; }
 .hover\:bg-blue-700:hover { background-color: var(--primary-hover) !important; }
+.hover\:bg-gray-50:hover, .hover\:bg-gray-100:hover, .hover\:bg-gray-200:hover, .hover\:bg-gray-300:hover {
+    background-color: var(--bg-surface-hover) !important;
+}
 
 /* ============================================
    Text colors
@@ -182,6 +192,9 @@
 .text-slate-300 { color: var(--text-muted) !important; }
 .text-slate-200 { color: var(--text-secondary) !important; }
 .text-slate-100 { color: var(--text-primary) !important; }
+.text-gray-900, .text-gray-800, .text-gray-700 { color: var(--text-primary) !important; }
+.text-gray-600, .text-gray-500 { color: var(--text-secondary) !important; }
+.text-gray-400, .text-gray-300 { color: var(--text-muted) !important; }
 
 /* Brand colors */
 .text-blue-600, .hover\:text-blue-600:hover { color: var(--primary) !important; }
@@ -210,6 +223,8 @@
 .text-yellow-700 { color: var(--warning) !important; }
 .text-indigo-600 { color: var(--primary) !important; }
 .text-indigo-700 { color: var(--primary) !important; }
+.text-purple-800 { color: #6B21A8 !important; }
+.dark .text-purple-800 { color: #D8B4FE !important; }
 
 /* ============================================
    Border colors
@@ -223,6 +238,11 @@
 .border-gray-200 { border-color: var(--border-color) !important; }
 .border-gray-300 { border-color: var(--border-strong) !important; }
 .border-gray-700 { border-color: var(--border-color) !important; }
+.border-gray-100 { border-color: color-mix(in srgb, var(--border-color) 50%, transparent) !important; }
+.border-gray-600 { border-color: var(--border-strong) !important; }
+.divide-gray-100 > :not(:last-child), .divide-gray-200 > :not(:last-child) {
+    border-color: var(--border-color) !important;
+}
 
 .border-blue-200 { border-color: var(--primary-border) !important; }
 .border-blue-300 { border-color: var(--primary-border) !important; }
@@ -233,6 +253,9 @@
 .border-amber-200 { border-color: var(--warning-border) !important; }
 .border-amber-300 { border-color: var(--warning-border) !important; }
 .border-cyan-200 { border-color: var(--info-border) !important; }
+.border-green-200 { border-color: var(--success-border) !important; }
+.border-red-200 { border-color: var(--danger-border) !important; }
+.border-yellow-200 { border-color: var(--warning-border) !important; }
 .border-violet-200 { border-color: #DDD6FE !important; }
 .dark .border-violet-200 { border-color: rgba(139, 92, 246, 0.3) !important; }
 
@@ -261,19 +284,76 @@ input, select, textarea {
     color: var(--text-primary) !important;
     border-color: var(--border-strong) !important;
 }
+select option {
+    background-color: var(--bg-surface);
+    color: var(--text-primary);
+}
 input::placeholder, textarea::placeholder { color: var(--text-muted) !important; }
 input:focus, select:focus, textarea:focus {
     border-color: var(--primary) !important;
     box-shadow: 0 0 0 3px var(--primary-soft) !important;
     outline: none !important;
 }
+input:disabled, select:disabled, textarea:disabled,
+input[readonly], textarea[readonly] {
+    background-color: var(--bg-surface-2) !important;
+    color: var(--text-secondary) !important;
+    cursor: not-allowed;
+    opacity: 1;
+}
+input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
+.dark input[type="date"], .dark input[type="datetime-local"], .dark input[type="month"],
+.dark input[type="time"], .dark input[type="week"], .dark select { color-scheme: dark; }
+
+button:focus-visible, a:focus-visible, [role="button"]:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--primary) 70%, transparent);
+    outline-offset: 2px;
+}
 
 /* ============================================
    Pagination
    ============================================ */
-nav[aria-label="Pagination"] { color: var(--text-secondary); }
-nav[aria-label="Pagination"] a, nav[aria-label="Pagination"] span { color: inherit; }
-nav[aria-label="Pagination"] .bg-blue-600 { background-color: var(--primary) !important; color: #fff !important; }
+nav[role="navigation"][aria-label*="Pagination"] { color: var(--text-secondary); }
+nav[role="navigation"][aria-label*="Pagination"] a,
+nav[role="navigation"][aria-label*="Pagination"] span {
+    border-color: var(--border-color) !important;
+}
+nav[role="navigation"][aria-label*="Pagination"] a {
+    background-color: var(--bg-surface) !important;
+    color: var(--text-secondary) !important;
+}
+nav[role="navigation"][aria-label*="Pagination"] a:hover {
+    background-color: var(--bg-surface-hover) !important;
+    color: var(--text-primary) !important;
+}
+nav[role="navigation"][aria-label*="Pagination"] [aria-current="page"] > span {
+    background-color: var(--primary-soft) !important;
+    border-color: var(--primary-border) !important;
+    color: var(--primary) !important;
+}
+nav[role="navigation"][aria-label*="Pagination"] [aria-disabled="true"] > span,
+nav[role="navigation"][aria-label*="Pagination"] > div > span[aria-disabled="true"] {
+    background-color: var(--bg-surface-2) !important;
+    color: var(--text-muted) !important;
+}
+
+/* SweetAlert follows the active application theme without changing its behavior. */
+.swal2-popup {
+    background: var(--bg-elevated) !important;
+    color: var(--text-primary) !important;
+    border: 1px solid var(--border-color) !important;
+    box-shadow: var(--shadow-lg) !important;
+}
+.swal2-title, .swal2-html-container, .swal2-close { color: var(--text-primary) !important; }
+.swal2-input, .swal2-textarea, .swal2-select {
+    background: var(--bg-surface) !important;
+    border-color: var(--border-strong) !important;
+    color: var(--text-primary) !important;
+}
+.swal2-cancel { background-color: var(--bg-surface-2) !important; color: var(--text-primary) !important; }
+.swal2-footer { border-color: var(--border-color) !important; color: var(--text-secondary) !important; }
+.swal2-timer-progress-bar { background: var(--primary) !important; }
+.dark .swal2-container.swal2-backdrop-show { background: rgb(2 6 23 / 0.72) !important; }
 
 /* ============================================
    Global body

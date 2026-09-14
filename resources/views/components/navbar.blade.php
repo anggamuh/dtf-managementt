@@ -30,19 +30,6 @@
 
         {{-- Right: Actions --}}
         <div class="flex items-center gap-2">
-            {{-- Search (Desktop) --}}
-            <div class="hidden lg:block relative">
-                <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-                </svg>
-                <input
-                    type="text"
-                    placeholder="Cari transaksi, invoice, customer..."
-                    class="w-64 rounded-xl border border-[#E2E8F0] bg-white pl-10 pr-4 py-2 text-sm
-                           focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB] outline-none transition-all duration-200 placeholder:text-slate-400
-                           dark:border-[#253247] dark:bg-[#111827] dark:text-slate-200 dark:placeholder:text-slate-500">
-            </div>
-
             {{-- Theme Toggle --}}
             <button onclick="toggleTheme()" aria-label="Ganti tema"
                 class="relative h-10 w-10 rounded-xl border border-[#E2E8F0] bg-white hover:bg-slate-50 transition-all duration-200 flex items-center justify-center text-slate-600 hover:text-slate-800 dark:border-[#253247] dark:bg-[#111827] dark:text-slate-200 dark:hover:bg-[#172033]"
@@ -96,7 +83,7 @@
                             </svg>
                             Profil Saya
                         </a>
-                        <a href="#"
+                        <a href="{{ route('profile.edit') }}#password"
                            class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors duration-150 dark:text-slate-200 dark:hover:bg-slate-800">
                             <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>

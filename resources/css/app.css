@@ -208,6 +208,11 @@ body {
     cursor: pointer;
     white-space: nowrap;
 }
+.app-btn:focus-visible, .app-icon-btn:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--primary) 70%, transparent);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px var(--primary-soft);
+}
 .app-btn-primary {
     background-color: var(--primary);
     color: #fff;

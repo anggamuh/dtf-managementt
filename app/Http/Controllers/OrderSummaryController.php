@@ -51,9 +51,27 @@ class OrderSummaryController extends Controller
     public function weekly(Request $request)
     {
         $branchId = $this->branchId($request);
-        $startDate = Carbon::parse($request->input('start_date', now()->startOfWeek()->toDateString()))->toDateString();
-        $endDate = Carbon::parse($request->input('end_date', now()->endOfWeek()->toDateString()))->toDateString();
-        abort_if($endDate < $startDate, 422, 'Tanggal akhir harus sama atau setelah tanggal mulai.');
+
+        $hasDateInputs = $request->exists('start_date') || $request->exists('end_date');
+
+        if ($hasDateInputs) {
+            $validated = $request->validate([
+                'start_date' => ['required', 'date'],
+                'end_date' => ['required', 'date', 'after_or_equal:start_date'],
+            ], [
+                'start_date.required' => 'Tanggal awal wajib diisi.',
+                'start_date.date' => 'Tanggal awal harus berupa tanggal yang valid.',
+                'end_date.required' => 'Tanggal akhir wajib diisi.',
+                'end_date.date' => 'Tanggal akhir harus berupa tanggal yang valid.',
+                'end_date.after_or_equal' => 'Tanggal akhir harus sama atau setelah tanggal awal.',
+            ]);
+
+            $startDate = Carbon::parse($validated['start_date'])->toDateString();
+            $endDate = Carbon::parse($validated['end_date'])->toDateString();
+        } else {
+            $startDate = now()->startOfWeek()->toDateString();
+            $endDate = now()->endOfWeek()->toDateString();
+        }
 
         $rows = Order::query()
             ->join('customers', 'customers.id', '=', 'orders.customer_id')
