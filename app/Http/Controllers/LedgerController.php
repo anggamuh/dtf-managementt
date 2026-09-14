@@ -71,24 +71,20 @@ class LedgerController extends Controller
 
         /*
         |--------------------------------------------------------------------------
-        | SALDO TAHANAN PERMANEN
+        | SALDO TAHANAN PERIODE
         |--------------------------------------------------------------------------
         |
-        | EPUL  = Rp20.000.000
-        | RAPLY = Rp10.000.000
+        | Saldo tahanan tidak lagi di-hardcode berdasarkan cabang.
+        | Nilainya diambil dari LedgerPeriodBalance untuk kombinasi
+        | branch_id + period_start + period_end yang sedang aktif.
         |
         */
 
-        $branch = Branch::query()->find($branchId);
-
-        $saldoTahanan = (float) (
-            $branch?->saldo_tahanan
-            ?? match ((int) $branchId) {
-                1 => 20_000_000,
-                2 => 10_000_000,
-                default => 0,
-            }
-        );
+        $saldoTahanan = match ((int) $branchId) {
+            1 => 20_000_000,
+            2 => 10_000_000,
+            default => 0,
+        };
 
 
         /*
@@ -99,8 +95,22 @@ class LedgerController extends Controller
 
         $invoices = Invoice::with('customer')
             ->where('branch_id', $branchId)
-            ->whereBetween('date', [$start, $end])
-            ->orderBy('date')
+            ->where(function ($query) use ($start, $end) {
+                $query
+                    ->whereBetween('period_end', [
+                        $start->toDateString(),
+                        $end->toDateString(),
+                    ])
+                    ->orWhere(function ($fallbackQuery) use ($start, $end) {
+                        $fallbackQuery
+                            ->whereNull('period_end')
+                            ->whereBetween('date', [
+                                $start->toDateString(),
+                                $end->toDateString(),
+                            ]);
+                    });
+            })
+            ->orderByRaw('COALESCE(period_end, date)')
             ->orderBy('id')
             ->get();
 
@@ -141,6 +151,10 @@ class LedgerController extends Controller
             $branchId,
             $start,
             $end
+        );
+
+        $saldoTahanan = (float) (
+            $periodBalance?->saldo_tahanan ?? 0
         );
 
         $saldoRealtime = (float) (
@@ -633,7 +647,7 @@ class LedgerController extends Controller
 
     /*
     |--------------------------------------------------------------------------
-    | UPDATE SALDO REALTIME
+    | UPDATE SALDO PERIODE
     |--------------------------------------------------------------------------
     */
 
@@ -653,6 +667,12 @@ class LedgerController extends Controller
                 'required',
                 'date',
                 'after_or_equal:start_date',
+            ],
+
+            'saldo_tahanan' => [
+                'required',
+                'numeric',
+                'min:0',
             ],
 
             'saldo_realtime' => [
@@ -684,26 +704,30 @@ class LedgerController extends Controller
         abort_if(
             $periodBalance->locked_at,
             422,
-            'Saldo realtime periode ini sudah dikunci dan tidak dapat diubah.'
+            'Saldo periode ini sudah dikunci dan tidak dapat diubah.'
         );
 
-        $periodBalance->update([
-            'saldo_realtime' =>
-                (float) $validated['saldo_realtime'],
-        ]);
+        // Assign langsung agar tidak bergantung pada $fillable model.
+        $periodBalance->saldo_tahanan =
+            (float) $validated['saldo_tahanan'];
+
+        $periodBalance->saldo_realtime =
+            (float) $validated['saldo_realtime'];
+
+        $periodBalance->save();
 
         return $this->redirectToPeriod(
             $branchId,
             $start,
             $end,
-            'Saldo realtime periode berhasil diperbarui.'
+            'Saldo tahanan dan saldo realtime periode berhasil diperbarui.'
         );
     }
 
 
     /*
     |--------------------------------------------------------------------------
-    | KUNCI SALDO REALTIME
+    | KUNCI SALDO PERIODE
     |--------------------------------------------------------------------------
     */
 
@@ -748,7 +772,7 @@ class LedgerController extends Controller
         abort_if(
             $periodBalance->locked_at,
             422,
-            'Saldo realtime periode ini sudah dikunci.'
+            'Saldo periode ini sudah dikunci.'
         );
 
         $periodBalance->update([
@@ -760,7 +784,7 @@ class LedgerController extends Controller
             $branchId,
             $start,
             $end,
-            'Saldo realtime periode berhasil dikunci.'
+            'Saldo tahanan dan saldo realtime periode berhasil dikunci.'
         );
     }
 
