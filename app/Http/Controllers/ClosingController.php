@@ -145,11 +145,12 @@ class ClosingController extends Controller
             ->where('year', $data['year'])
             ->first();
 
-        abort_if(
-            $existing?->is_locked,
-            422,
-            'Closing yang sudah dikunci tidak dapat digenerate ulang.'
-        );
+        if ($existing?->is_locked) {
+            return back()->with(
+                'error',
+                'Closing yang sudah dikunci tidak dapat digenerate ulang.'
+            );
+        }
 
         $this->service->generate(
             $branchId,
@@ -400,13 +401,18 @@ class ClosingController extends Controller
      */
     public function destroy(Request $r, Closing $closing)
     {
-        abort_if(
-            $closing->is_locked,
-            422,
-            'Closing yang terkunci tidak dapat dihapus.'
-        );
-
         $branchId = $this->branchId($r);
+
+        if ($closing->is_locked) {
+            return redirect()
+                ->route('closing.index', [
+                    'branch_id' => $branchId,
+                ])
+                ->with(
+                    'error',
+                    'Closing yang terkunci tidak dapat dihapus.'
+                );
+        }
 
         abort_unless(
             $this->canAccessAllBranches()
