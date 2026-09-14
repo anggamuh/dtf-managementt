@@ -38,10 +38,9 @@ class ClosingController extends Controller
         $year = (int) $r->input('year', now()->year);
 
         /*
-         * Periode closing.
-         *
-         * Jika start_date / end_date tidak dikirim,
-         * otomatis menggunakan tanggal awal dan akhir bulan.
+         * Periode pada form Generate Closing.
+         * Nilai ini HANYA untuk form generate, bukan untuk menghitung setiap
+         * baris riwayat closing di tabel bawah.
          */
         $startDate = $r->input(
             'start_date',
@@ -64,34 +63,7 @@ class ClosingController extends Controller
         );
 
         /*
-         * Ambil closing bulan yang sedang dipilih.
-         */
-        $closing = Closing::query()
-            ->when(
-                $branchId !== 0,
-                fn ($q) => $q->where('branch_id', $branchId)
-            )
-            ->where('month', $month)
-            ->where('year', $year)
-            ->first();
-
-        /*
-         * Ambil seluruh data closing.
-         *
-         * startDate dan endDate dikirim supaya
-         * perhitungan mengikuti periode yang sedang dipilih.
-         */
-        $data = $this->service->getData(
-            $branchId,
-            $month,
-            $year,
-            $closing,
-            Carbon::parse($startDate),
-            Carbon::parse($endDate)
-        );
-
-        /*
-         * Riwayat closing.
+         * Riwayat closing sesuai cabang yang sedang dipilih.
          */
         $closings = Closing::query()
             ->when(
@@ -103,16 +75,71 @@ class ClosingController extends Controller
             ->paginate(15)
             ->withQueryString();
 
+        /*
+         * SINGLE SOURCE OF TRUTH UNTUK INDEX:
+         *
+         * Setiap row dihitung dengan ClosingService::getData() yang sama
+         * dengan halaman Show, menggunakan branch_id dan period_start /
+         * period_end milik closing tersebut.
+         *
+         * JANGAN pakai tanggal dari form Generate Closing untuk row tabel.
+         * Contoh closing 10/08/2026 - 05/09/2026 harus tetap berhenti di
+         * 05/09/2026, sehingga expense tanggal 09/09/2026 tidak ikut.
+         */
+        $closingDataMap = [];
+
+        foreach ($closings->getCollection() as $item) {
+            $rowStart = $item->period_start
+                ? Carbon::parse($item->period_start)->startOfDay()
+                : Carbon::create(
+                    (int) $item->year,
+                    (int) $item->month,
+                    1
+                )->startOfMonth()->startOfDay();
+
+            $rowEnd = $item->period_end
+                ? Carbon::parse($item->period_end)->endOfDay()
+                : (clone $rowStart)->endOfMonth()->endOfDay();
+
+            $rowData = $this->service->getData(
+                (int) $item->branch_id,
+                (int) $item->month,
+                (int) $item->year,
+                $item,
+                $rowStart,
+                $rowEnd
+            );
+
+            $rowHpp = $rowData['hpp'] ?? [];
+
+            /*
+             * Kompatibel dengan ClosingService versi baru maupun lama.
+             * Versi baru menyediakan totalHpp. Kalau belum ada, total HPP
+             * dihitung dari allRows yang memang menjadi sumber tabel rincian.
+             */
+            $totalHpp = array_key_exists('totalHpp', $rowHpp)
+                ? (float) $rowHpp['totalHpp']
+                : (float) collect($rowHpp['allRows'] ?? [])->sum('totalHarga');
+
+            $closingDataMap[$item->id] = [
+                'totalIncome' => (float) ($rowData['totalIncome'] ?? 0),
+                'totalExpense' => (float) ($rowData['totalExpense'] ?? 0),
+                'profit' => (float) ($rowData['profit'] ?? 0),
+                'totalHpp' => $totalHpp,
+                'totalRpMeter' => (float) ($rowHpp['totalRpMeter'] ?? 0),
+            ];
+        }
+
         return view(
             'closing.index',
-            $data + compact(
+            compact(
                 'branchId',
                 'month',
                 'year',
                 'startDate',
                 'endDate',
-                'closing',
-                'closings'
+                'closings',
+                'closingDataMap'
             ) + [
                 'branches' => $this->branches(),
             ]
@@ -461,27 +488,30 @@ class ClosingController extends Controller
             ?? (clone $start)->endOfMonth();
 
         /*
-         * Pastikan HPP tersedia ketika membuka detail.
+         * Detail memakai kalkulasi live dari service sebagai sumber utama.
+         * Snapshot closings.hpp / hpp_per_meter tetap disimpan saat generate
+         * atau saat data closing berubah, tetapi tampilan tidak bergantung
+         * pada snapshot lama.
          */
-        if (
-            empty($closing->hpp)
-            || empty($closing->hpp_per_meter)
-        ) {
-            $this->service->calculateHpp(
-                $closing,
-                $start,
-                $end
-            );
-
-            $closing->refresh();
-        }
-
         $data = $this->service->getData(
             $branchId,
             $month,
             $year,
-            $closing
+            $closing,
+            $start,
+            $end
         );
+
+        /*
+         * Sinkronkan atribut model hanya di memory agar view/partial lama yang
+         * masih membaca $closing->hpp tetap mendapat angka yang sama. Tidak
+         * menulis database, sehingga aman juga untuk closing yang terkunci.
+         */
+        $closing->setAttribute('hpp', (float) ($data['hpp']['totalHpp'] ?? 0));
+        $closing->setAttribute('hpp_per_meter', (float) ($data['hpp']['totalRpMeter'] ?? 0));
+        $closing->setAttribute('income', (float) ($data['totalIncome'] ?? 0));
+        $closing->setAttribute('expense', (float) ($data['totalExpense'] ?? 0));
+        $closing->setAttribute('profit', (float) ($data['profit'] ?? 0));
 
         $branch = Branch::find($branchId);
 
@@ -528,20 +558,36 @@ class ClosingController extends Controller
             ->where('year', $year)
             ->first();
 
+        abort_if(
+            ! $closing,
+            422,
+            'Closing belum digenerate untuk periode ini.'
+        );
+
+        $start = $closing->period_start?->copy()
+            ?? Carbon::create($year, $month, 1)->startOfMonth();
+        $end = $closing->period_end?->copy()
+            ?? (clone $start)->endOfMonth();
+
         $data = $this->service->getData(
             $branchId,
             $month,
             $year,
-            $closing
+            $closing,
+            $start,
+            $end
         );
+
+        $closing->setAttribute('hpp', (float) ($data['hpp']['totalHpp'] ?? 0));
+        $closing->setAttribute('hpp_per_meter', (float) ($data['hpp']['totalRpMeter'] ?? 0));
 
         $branch = Branch::find($branchId);
 
         $orders = Order::with(['customer', 'product'])
             ->where('branch_id', $branchId)
             ->whereBetween('date', [
-                $closing->period_start ?? Carbon::create($year, $month, 1)->startOfMonth(),
-                $closing->period_end ?? Carbon::create($year, $month, 1)->endOfMonth(),
+                $start->copy()->startOfDay(),
+                $end->copy()->endOfDay(),
             ])
             ->orderBy('date')
             ->get();
@@ -590,13 +636,25 @@ class ClosingController extends Controller
             'Closing belum digenerate untuk periode ini.'
         );
 
-        $data = $this->service->getData($branchId, $month, $year, $closing);
+        $start = $closing->period_start?->copy()
+            ?? Carbon::create($year, $month, 1)->startOfMonth();
+        $end = $closing->period_end?->copy()
+            ?? (clone $start)->endOfMonth();
+
+        $data = $this->service->getData(
+            $branchId,
+            $month,
+            $year,
+            $closing,
+            $start,
+            $end
+        );
         $branch = Branch::find($branchId);
         $period = Carbon::create($year, $month, 1)->translatedFormat('F Y');
         $invoices = $data['invoices'] ?? collect();
         $expenses = $data['expenses'] ?? collect();
         $materialRows = $data['materialRows'] ?? collect();
-        $hpp = $data['hpp'] ?? ['hasilCetak' => 0, 'allRows' => collect(), 'totalRpMeter' => 0];
+        $hpp = $data['hpp'] ?? ['hasilCetak' => 0, 'allRows' => collect(), 'totalHpp' => 0, 'totalRpMeter' => 0];
         $soTotal = $materialRows->sum(
             fn ($material) => (float) ($material['stock_akhir'] ?? 0)
                 * (float) ($material['unit_cost'] ?? 0)
@@ -628,8 +686,8 @@ class ClosingController extends Controller
 
         $summary = [
             'Hasil Cetak' => (float) ($hpp['hasilCetak'] ?? 0),
-            'Total HPP (info)' => $closing->hpp ?? 0,
-            'HPP / Meter' => $closing->hpp_per_meter ?? 0,
+            'Total HPP (info)' => (float) ($hpp['totalHpp'] ?? 0),
+            'HPP / Meter' => (float) ($hpp['totalRpMeter'] ?? 0),
             'Laba / Rugi' => $data['profit'] ?? 0,
         ];
 
@@ -845,8 +903,8 @@ class ClosingController extends Controller
                 ],
                 ['Total Pengeluaran (semua kategori)', (float) ($data['totalExpense'] ?? 0)],
                 ['Remaining Material', (float) ($data['remainingMaterial'] ?? 0)],
-                ['HPP / Meter (info)', (float) ($closing->hpp_per_meter ?? 0)],
-                ['Total HPP (info, tidak memengaruhi laba)', (float) ($closing->hpp ?? 0)],
+                ['HPP / Meter (info)', (float) ($hpp['totalRpMeter'] ?? 0)],
+                ['Total HPP (info, tidak memengaruhi laba)', (float) ($hpp['totalHpp'] ?? 0)],
                 ['Laba/Rugi Bersih (Pemasukan - Pengeluaran)', (float) ($data['profit'] ?? 0)],
             ],
             currencyCols: [1],
