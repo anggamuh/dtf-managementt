@@ -8,6 +8,7 @@ use App\Models\Expense;
 use App\Models\Invoice;
 use App\Models\Material;
 use App\Models\Order;
+use App\Services\ClosingService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -15,6 +16,10 @@ use Illuminate\Support\Facades\DB;
 class DashboardController extends Controller
 {
     use ResolvesBranch;
+
+    public function __construct(
+        private readonly ClosingService $closingService,
+    ) {}
 
     public function __invoke(Request $request)
     {
@@ -281,9 +286,28 @@ class DashboardController extends Controller
 
     private function getBranchSummary(int $branchId, Carbon $start, Carbon $end, bool $isAllBranches): array
     {
+        /*
+        |--------------------------------------------------------------------------
+        | Perbandingan Cabang = Closing Terakhir
+        |--------------------------------------------------------------------------
+        |
+        | Bagian ini tidak mengikuti filter tanggal dashboard.
+        | Setiap cabang mengambil closing terakhirnya masing-masing lalu memakai
+        | ClosingService yang sama dengan halaman detail Closing.
+        |
+        | Dengan begitu angka Dashboard harus sama dengan angka yang tampil di
+        | halaman Closing, bukan sekadar membaca snapshot kolom `closings` yang
+        | bisa saja sudah tertinggal dari kalkulasi service.
+        |
+        */
+
         $branches = $this->branches()->pluck('id')->all();
+
         if ($isAllBranches) {
-            $branches = array_filter($branches, fn ($id) => (int) $id !== 0);
+            $branches = array_values(array_filter(
+                $branches,
+                fn ($id) => (int) $id !== 0
+            ));
         } else {
             $branches = [$branchId];
         }
@@ -291,52 +315,95 @@ class DashboardController extends Controller
         $summary = [];
 
         foreach ($branches as $id) {
+            $id = (int) $id;
             $branch = \App\Models\Branch::find($id);
-            $branchIncome = $this->calculateIncome((int) $id, $start, $end, false);
-            $branchExpense = $this->calculateExpense((int) $id, $start, $end, false);
-            $branchProfit = $branchIncome - $branchExpense;
-            $branchMeters = (float) Order::query()
-                ->where('branch_id', $id)
-                ->whereBetween('date', [$start, $end])
-                ->where(function ($q) {
-                    $q->where('order_type', '!=', 'customer_custom')
-                        ->orWhereNull('order_type')
-                        ->orWhere('payment_status', 'paid');
-                })
-                ->sum('qty');
 
-            $branchInvoices = Invoice::query()->where('branch_id', $id)->whereBetween('date', [$start, $end])->get();
-            $branchUnpaid = (float) $branchInvoices->sum(fn ($invoice) => max(0, (float) $invoice->total - (float) $invoice->paid));
-            $branchBalance = (float) ($branch?->saldo_tahanan ?? ($id === 1 ? 20000000 : 10000000));
-            $branchRealtime = (float) \App\Models\LedgerPeriodBalance::query()
+            if (! $branch) {
+                continue;
+            }
+
+            $closing = \App\Models\Closing::query()
                 ->where('branch_id', $id)
-                ->whereDate('period_start', '<=', $end)
-                ->whereDate('period_end', '>=', $start)
-                ->sum('saldo_realtime');
-            $closingStock = \App\Models\Closing::query()->where('branch_id', $id)->whereDate('period_start', '<=', $start)->whereDate('period_end', '>=', $end)->latest('id')->first();
-            $remainingMaterial = $closingStock?->materials?->sum(fn ($material) => (float) ($material->stock_akhir ?? 0) * (float) ($material->harga_komponen ?? 0)) ?? 0;
-            $branchSaldoSisa = $branchBalance - $remainingMaterial;
-            $branchProfitValue = $branchIncome - $branchExpense;
-            $branchSelisih = $branchRealtime - ($branchProfitValue + $branchSaldoSisa);
+                ->orderByDesc('period_end')
+                ->orderByDesc('id')
+                ->first();
+
+            if (! $closing) {
+                $summary[] = [
+                    'id' => $id,
+                    'name' => $branch->name ?? 'Cabang',
+                    'code' => $branch->code ?? 'CABANG',
+                    'closing_id' => null,
+                    'period_start' => null,
+                    'period_end' => null,
+                    'period_label' => 'Belum ada closing',
+                    'income' => 0.0,
+                    'expense' => 0.0,
+                    'profit' => 0.0,
+                    'meters' => 0.0,
+                    'orders' => 0,
+                    'unpaid_invoices' => 0.0,
+                    'saldo_tahanan' => 0.0,
+                    'saldo_realtime' => 0.0,
+                    'saldo_tahanan_sisa' => 0.0,
+                    'remaining_material' => 0.0,
+                    'sisa_saldo' => 0.0,
+                    'selisih' => 0.0,
+                    'is_locked' => false,
+                ];
+
+                continue;
+            }
+
+            /*
+             * Penting:
+             * gunakan source of truth yang sama dengan halaman Closing.
+             */
+            $data = $this->closingService->getData(
+                $id,
+                (int) $closing->month,
+                (int) $closing->year,
+                $closing
+            );
+
+            $hpp = $data['hpp'] ?? [];
+
+            $periodStart = $closing->period_start
+                ? Carbon::parse($closing->period_start)
+                : null;
+
+            $periodEnd = $closing->period_end
+                ? Carbon::parse($closing->period_end)
+                : null;
 
             $summary[] = [
                 'id' => $id,
-                'name' => $branch?->name ?? 'Cabang',
-                'code' => $branch?->code ?? 'CABANG',
-                'income' => (float) $branchIncome,
-                'expense' => (float) $branchExpense,
-                'profit' => (float) $branchProfit,
-                'meters' => (float) $branchMeters,
-                'orders' => (int) Order::query()->where('branch_id', $id)->whereBetween('date', [$start, $end])->where(function ($q) {
-                    $q->where('order_type', '!=', 'customer_custom')
-                        ->orWhereNull('order_type')
-                        ->orWhere('payment_status', 'paid');
-                })->count(),
-                'unpaid_invoices' => (float) $branchUnpaid,
-                'saldo_tahanan' => $branchBalance,
-                'saldo_realtime' => $branchRealtime,
-                'saldo_tahanan_sisa' => $branchSaldoSisa,
-                'selisih' => $branchSelisih,
+                'name' => $branch->name ?? 'Cabang',
+                'code' => $branch->code ?? 'CABANG',
+                'closing_id' => $closing->id,
+                'period_start' => $periodStart?->toDateString(),
+                'period_end' => $periodEnd?->toDateString(),
+                'period_label' => $periodStart && $periodEnd
+                    ? $periodStart->translatedFormat('d M Y').' - '.$periodEnd->translatedFormat('d M Y')
+                    : 'Closing terakhir',
+
+                // Sama persis dengan data yang dipakai halaman Closing.
+                'income' => (float) ($data['totalIncome'] ?? 0),
+                'expense' => (float) ($data['totalExpense'] ?? 0),
+                'profit' => (float) ($data['profit'] ?? 0),
+                'meters' => (float) ($hpp['hasilCetak'] ?? 0),
+
+                // Field tambahan dipertahankan untuk kompatibilitas view lama.
+                'orders' => 0,
+                'unpaid_invoices' => 0.0,
+
+                'saldo_tahanan' => (float) ($data['saldoTahanan'] ?? 0),
+                'saldo_realtime' => (float) ($data['saldoRealtime'] ?? 0),
+                'saldo_tahanan_sisa' => (float) ($data['saldoTahananSisa'] ?? 0),
+                'remaining_material' => (float) ($data['remainingMaterial'] ?? 0),
+                'sisa_saldo' => (float) ($data['sisaSaldo'] ?? 0),
+                'selisih' => (float) ($data['selisih'] ?? 0),
+                'is_locked' => (bool) $closing->is_locked,
             ];
         }
 

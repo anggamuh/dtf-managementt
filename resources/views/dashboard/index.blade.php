@@ -285,6 +285,117 @@
                 @endforeach
             </div>
         </section>
+
+        @if(count($branchSummary) >= 2)
+            @php
+                $comparisonBranchA = $branchSummary[0];
+                $comparisonBranchB = $branchSummary[1];
+
+                $comparisonMetrics = [
+                    [
+                        'label' => 'Omzet',
+                        'key' => 'income',
+                        'type' => 'currency',
+                    ],
+                    [
+                        'label' => 'Pengeluaran',
+                        'key' => 'expense',
+                        'type' => 'currency',
+                    ],
+                    [
+                        'label' => 'Laba Bersih',
+                        'key' => 'profit',
+                        'type' => 'currency',
+                    ],
+                    [
+                        'label' => 'Total Meter',
+                        'key' => 'meters',
+                        'type' => 'meter',
+                    ],
+                ];
+            @endphp
+
+            <section class="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm dark:border-[#253247] dark:bg-[#111827]">
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                        <h2 class="text-lg font-semibold text-[#0F172A] dark:text-[#F8FAFC]">Grafik Perbandingan Cabang</h2>
+                        <p class="mt-1 text-sm text-[#64748B] dark:text-[#94A3B8]">Perbandingan berdasarkan closing terakhir masing-masing cabang.</p>
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-4 text-xs text-[#64748B] dark:text-[#94A3B8]">
+                        <div class="flex items-center gap-2">
+                            <span class="h-2.5 w-2.5 rounded-full bg-blue-500"></span>
+                            <span class="font-medium">{{ $comparisonBranchA['name'] }}</span>
+                        </div>
+
+                        <div class="flex items-center gap-2">
+                            <span class="h-2.5 w-2.5 rounded-full bg-emerald-500"></span>
+                            <span class="font-medium">{{ $comparisonBranchB['name'] }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-7 grid gap-6 xl:grid-cols-2">
+                    @foreach($comparisonMetrics as $metric)
+                        @php
+                            $valueA = (float) ($comparisonBranchA[$metric['key']] ?? 0);
+                            $valueB = (float) ($comparisonBranchB[$metric['key']] ?? 0);
+                            $maxValue = max(abs($valueA), abs($valueB), 1);
+                            $widthA = min(100, (abs($valueA) / $maxValue) * 100);
+                            $widthB = min(100, (abs($valueB) / $maxValue) * 100);
+                        @endphp
+
+                        <article class="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-4 dark:border-[#253247] dark:bg-[#0B1220]">
+                            <div class="mb-4 flex items-center justify-between gap-3">
+                                <h3 class="text-sm font-semibold text-[#0F172A] dark:text-[#F8FAFC]">{{ $metric['label'] }}</h3>
+                            </div>
+
+                            <div class="space-y-4">
+                                <div>
+                                    <div class="mb-1.5 flex items-center justify-between gap-3 text-xs">
+                                        <span class="font-medium text-[#64748B] dark:text-[#94A3B8]">{{ $comparisonBranchA['name'] }}</span>
+                                        <span class="font-semibold text-[#0F172A] dark:text-[#F8FAFC]">
+                                            @if($metric['type'] === 'currency')
+                                                Rp {{ number_format($valueA, 0, ',', '.') }}
+                                            @else
+                                                {{ number_format($valueA, 2, ',', '.') }} m
+                                            @endif
+                                        </span>
+                                    </div>
+
+                                    <div class="h-3 overflow-hidden rounded-full bg-[#E2E8F0] dark:bg-[#172033]">
+                                        <div
+                                            class="h-full rounded-full bg-blue-500 transition-all duration-500"
+                                            style="width: {{ number_format($widthA, 2, '.', '') }}%"
+                                        ></div>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div class="mb-1.5 flex items-center justify-between gap-3 text-xs">
+                                        <span class="font-medium text-[#64748B] dark:text-[#94A3B8]">{{ $comparisonBranchB['name'] }}</span>
+                                        <span class="font-semibold text-[#0F172A] dark:text-[#F8FAFC]">
+                                            @if($metric['type'] === 'currency')
+                                                Rp {{ number_format($valueB, 0, ',', '.') }}
+                                            @else
+                                                {{ number_format($valueB, 2, ',', '.') }} m
+                                            @endif
+                                        </span>
+                                    </div>
+
+                                    <div class="h-3 overflow-hidden rounded-full bg-[#E2E8F0] dark:bg-[#172033]">
+                                        <div
+                                            class="h-full rounded-full bg-emerald-500 transition-all duration-500"
+                                            style="width: {{ number_format($widthB, 2, '.', '') }}%"
+                                        ></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </article>
+                    @endforeach
+                </div>
+            </section>
+        @endif
     @endif
 </div>
 @endsection

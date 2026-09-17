@@ -48,9 +48,13 @@
             <a href="{{ route('dashboard') }}"
                class="flex items-center gap-2.5 overflow-hidden min-w-0">
 
-                <div class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 text-white font-bold text-sm shadow-lg shadow-blue-500/20">
-                    D
-                </div>
+                <div class="flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl">
+    <img
+        src="{{ asset('images/awe-logo.png') }}"
+        alt="Aweprint"
+        class="h-full w-full object-contain"
+    >
+</div>
 
                 <div class="leading-tight whitespace-nowrap min-w-0 sidebar-logo-wrap">
                     <div class="sidebar-logo-text text-sm font-bold tracking-tight truncate">
