@@ -10,6 +10,8 @@ use App\Services\ClosingService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
@@ -25,6 +27,15 @@ class ClosingController extends Controller
     public function __construct(ClosingService $service)
     {
         $this->service = $service;
+    }
+
+    /**
+     * Hanya Super Admin & Owner yang boleh membuka kunci
+     * dan mengubah closing yang sudah terkunci.
+     */
+    private function canManageLocked(): bool
+    {
+        return (bool) auth()->user()?->hasAnyRole(['Super Admin', 'Owner']);
     }
 
     /**
@@ -142,6 +153,7 @@ class ClosingController extends Controller
                 'closingDataMap'
             ) + [
                 'branches' => $this->branches(),
+                'canManageLocked' => $this->canManageLocked(),
             ]
         );
     }
@@ -172,7 +184,7 @@ class ClosingController extends Controller
             ->where('year', $data['year'])
             ->first();
 
-        if ($existing?->is_locked) {
+        if ($existing?->is_locked && ! $this->canManageLocked()) {
             return back()->with(
                 'error',
                 'Closing yang sudah dikunci tidak dapat digenerate ulang.'
@@ -225,7 +237,7 @@ class ClosingController extends Controller
             ->first();
 
         abort_if(
-            $closing?->is_locked,
+            $closing?->is_locked && ! $this->canManageLocked(),
             422,
             'Closing yang terkunci tidak dapat diubah.'
         );
@@ -321,7 +333,7 @@ class ClosingController extends Controller
         );
 
         abort_if(
-            $closing->is_locked,
+            $closing->is_locked && ! $this->canManageLocked(),
             422,
             'Closing yang terkunci tidak dapat diubah.'
         );
@@ -373,10 +385,15 @@ class ClosingController extends Controller
             $end
         );
 
-        return back()->with(
-            'message',
-            'Stock akhir dan harga manual material berhasil disimpan.'
-        );
+        /*
+         * Terapkan stock akhir ini ke stock awal closing berikutnya
+         * (kalau ada & belum terkunci), tanpa perlu generate ulang.
+         */
+        $warning = $this->service->propagateStockAwalToNext($closing);
+
+        return back()
+            ->with('message', 'Stock akhir dan harga manual material berhasil disimpan.')
+            ->with('warning', $warning);
     }
 
     /**
@@ -424,13 +441,75 @@ class ClosingController extends Controller
     }
 
     /**
+     * Buka kunci closing (hanya super admin & owner).
+     */
+    public function unlock(Request $r)
+    {
+        $branchId = $this->branchId($r);
+
+        $data = $r->validate([
+            'month' => 'required|integer|between:1,12',
+            'year' => 'required|integer|min:2020|max:2100',
+        ]);
+
+        abort_unless(
+            $this->canManageLocked(),
+            403,
+            'Hanya super admin dan owner yang dapat membuka kunci closing.'
+        );
+
+        abort_if(
+            $branchId === 0,
+            422,
+            'Pilih cabang terlebih dahulu untuk membuka kunci closing.'
+        );
+
+        $closing = Closing::query()
+            ->where('branch_id', $branchId)
+            ->where('month', $data['month'])
+            ->where('year', $data['year'])
+            ->first();
+
+        abort_if(
+            ! $closing,
+            422,
+            'Closing belum digenerate.'
+        );
+
+        abort_if(
+            ! $closing->is_locked,
+            422,
+            'Closing tidak dalam keadaan terkunci.'
+        );
+
+        // forceFill: update() mengabaikan kolom yang tidak ada di $fillable.
+        $attrs = ['is_locked' => false];
+        foreach (['locked_at', 'locked_by'] as $col) {
+            if (Schema::hasColumn($closing->getTable(), $col)) {
+                $attrs[$col] = null;
+            }
+        }
+        $closing->forceFill($attrs)->save();
+
+        Log::info('[Closing] unlocked', [
+            'closing_id' => $closing->id,
+            'user_id' => auth()->id(),
+        ]);
+
+        return back()->with(
+            'message',
+            'Kunci closing berhasil dibuka.'
+        );
+    }
+
+    /**
      * Hapus closing.
      */
     public function destroy(Request $r, Closing $closing)
     {
         $branchId = $this->branchId($r);
 
-        if ($closing->is_locked) {
+        if ($closing->is_locked && ! $this->canManageLocked()) {
             return redirect()
                 ->route('closing.index', [
                     'branch_id' => $branchId,
@@ -525,12 +604,13 @@ class ClosingController extends Controller
                 'branch'
             ) + [
                 'branches' => $this->branches(),
+                'canManageLocked' => $this->canManageLocked(),
             ]
         );
     }
 
     /**
-     * Export PDF.
+     * Export PDF (A4 portrait).
      */
     public function exportPdf(Request $r)
     {
@@ -602,7 +682,7 @@ class ClosingController extends Controller
                 'orders'
             )
         )
-            ->setPaper('a4', 'landscape')
+            ->setPaper('a4', 'portrait')
             ->download(
                 "closing-{$year}-{$month}.pdf"
             );
@@ -686,7 +766,7 @@ class ClosingController extends Controller
 
         $summary = [
             'Hasil Cetak' => (float) ($hpp['hasilCetak'] ?? 0),
-            'Total HPP (info)' => (float) ($hpp['totalHpp'] ?? 0),
+            'Total Penghasilan' => (float) ($hpp['totalHpp'] ?? 0),
             'HPP / Meter' => (float) ($hpp['totalRpMeter'] ?? 0),
             'Laba / Rugi' => $data['profit'] ?? 0,
         ];

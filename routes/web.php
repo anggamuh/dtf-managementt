@@ -258,6 +258,7 @@ Route::delete(
         '/closing/generate',
         [ClosingController::class, 'generate']
     )->name('closing.generate');
+    
 
     Route::post(
         '/closing/settings',
@@ -273,6 +274,7 @@ Route::delete(
         '/closing/lock',
         [ClosingController::class, 'lock']
     )->name('closing.lock');
+    Route::post('/closing/unlock', [ClosingController::class, 'unlock'])->name('closing.unlock');
 
     Route::get(
         '/closing/export/pdf',
@@ -294,6 +296,7 @@ Route::delete(
         '/closing/{closing}',
         [ClosingController::class, 'destroy']
     )->name('closing.destroy');
+    
 
     /*
     |--------------------------------------------------------------------------

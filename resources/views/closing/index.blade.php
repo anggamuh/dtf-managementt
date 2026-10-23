@@ -147,7 +147,7 @@
                                         </svg>
                                     </a>
                                 @endif
-                                @if(!$c->is_locked)
+                                @if(!$c->is_locked || $canManageLocked)
                                 <form method="POST" action="{{ route('closing.destroy', $c) }}" onsubmit="event.preventDefault(); showDeleteClosingConfirmation('{{ \Carbon\Carbon::create()->month((int) $c->month)->translatedFormat('F') }} {{ (int) $c->year }}', '{{ route('closing.destroy', $c) }}');">
                                     @csrf
                                     @method('DELETE')

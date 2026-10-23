@@ -578,6 +578,52 @@ class ClosingService
     }
 
     /**
+     * Terapkan stock_akhir closing ini ke stock_awal closing BERIKUTNYA
+     * (cabang yang sama), lalu hitung ulang HPP closing berikutnya.
+     *
+     * Dipakai setelah stock akhir diedit, supaya tidak perlu generate ulang.
+     * Closing berikutnya yang sudah terkunci TIDAK diubah.
+     *
+     * @return string|null pesan peringatan bila closing berikutnya terkunci
+     */
+    public function propagateStockAwalToNext(Closing $closing): ?string
+    {
+        if (! $closing->period_end) {
+            return null;
+        }
+
+        $next = Closing::query()
+            ->where('branch_id', $closing->branch_id)
+            ->whereNotNull('period_start')
+            ->where('period_start', '>', Carbon::parse($closing->period_end)->toDateString())
+            ->orderBy('period_start')
+            ->orderBy('id')
+            ->first();
+
+        if (! $next) {
+            return null;
+        }
+
+        if ($next->is_locked) {
+            return 'Closing berikutnya sudah terkunci, jadi Stock Awal-nya tidak ikut berubah. Buka kuncinya dulu bila perlu.';
+        }
+
+        foreach ($closing->materials()->get() as $component) {
+            $next->materials()
+                ->where('material_id', $component->material_id)
+                ->update(['stock_awal' => (float) $component->stock_akhir]);
+        }
+
+        $this->calculateHpp(
+            $next,
+            Carbon::parse($next->period_start)->startOfDay(),
+            Carbon::parse($next->period_end)->endOfDay()
+        );
+
+        return null;
+    }
+
+    /**
      * Pembelian Bahan Baku.
      *
      * qty:

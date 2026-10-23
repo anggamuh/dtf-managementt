@@ -2,6 +2,37 @@
     $totalPembelian = $materialRows->sum('purchase_value');
     $showMachineGroups = $materialRows->contains(fn ($row) => $row['material']->machine_id !== null);
     $lastMachineGroup = null;
+    $isEditable = $closing && ! $closing->is_locked;
+
+    /*
+     * Baris biaya tetap. Lain-lain sekarang ikut ditampilkan.
+     */
+    $fixedRows = [
+        ['nama' => 'Gaji Karyawan', 'nilai' => (float) ($closing->gaji_karyawan ?? 0)],
+        ['nama' => 'Operasional',   'nilai' => (float) ($closing->operasional ?? 0)],
+        ['nama' => 'Teknisi Mesin', 'nilai' => (float) ($closing->teknisi_mesin ?? 0)],
+        ['nama' => 'Lain-lain',     'nilai' => (float) ($closing->lain_lain ?? 0)],
+    ];
+
+    $totalFixed = collect($fixedRows)->sum('nilai');
+
+    /*
+     * Rekonsiliasi: sisa expense yang belum masuk baris mana pun
+     * (Bahan Baku tanpa material/qty, kategori di luar mapping, dll)
+     * supaya total tabel = Total Pengeluaran.
+     */
+    $selisihExpense = isset($totalExpense)
+        ? round((float) $totalExpense - (float) $totalPembelian - $totalFixed, 2)
+        : 0;
+
+    if (abs($selisihExpense) >= 1) {
+        $fixedRows[] = [
+            'nama'  => 'Pengeluaran lain (Bahan Baku tanpa material / kategori lain)',
+            'nilai' => $selisihExpense,
+        ];
+    }
+
+    $totalAll = $totalPembelian + collect($fixedRows)->sum('nilai');
 @endphp
 
 <div class="mt-6 overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
@@ -22,7 +53,7 @@
         </div>
     </div>
 
-    @if(!$closing?->is_locked && $closing)
+    @if($isEditable)
         <form method="POST" action="{{ route('closing.update-stock-akhir') }}" id="form-stock-akhir">
             @csrf
             <input type="hidden" name="month" value="{{ $closing->month }}">
@@ -49,22 +80,30 @@
                     @endphp
 
                     @if($showMachineGroups && $lastMachineGroup !== $machineGroup)
-                        @php $lastMachineGroup = $machineGroup; $machineSubtotal = $materialRows->filter(fn ($item) => ($item['material']->machine?->name ?? 'Belum Ditentukan') === $machineGroup)->sum('purchase_value'); @endphp
-                        <tr class="bg-blue-50 dark:bg-blue-500/10"><td colspan="6" class="p-3 text-xs font-bold uppercase tracking-wide text-blue-700 dark:text-blue-300">{{ $machineGroup }} <span class="float-right normal-case">Subtotal pembelian: Rp{{ number_format($machineSubtotal, 0, ',', '.') }}</span></td></tr>
+                        @php
+                            $lastMachineGroup = $machineGroup;
+                            $machineSubtotal = $materialRows
+                                ->filter(fn ($item) => ($item['material']->machine?->name ?? 'Belum Ditentukan') === $machineGroup)
+                                ->sum('purchase_value');
+                        @endphp
+                        <tr class="bg-blue-50 dark:bg-blue-500/10">
+                            <td colspan="6" class="p-3 text-xs font-bold uppercase tracking-wide text-blue-700 dark:text-blue-300">
+                                {{ $machineGroup }}
+                                <span class="float-right normal-case">Subtotal pembelian: Rp{{ number_format($machineSubtotal, 0, ',', '.') }}</span>
+                            </td>
+                        </tr>
                     @endif
 
                     <tr class="border-b border-slate-100 hover:bg-slate-50/50 dark:border-slate-700 dark:hover:bg-slate-900/50">
                         <td class="p-3 font-medium text-slate-800 dark:text-white">
                             {{ $row['material']->display_name }}
-                            <span class="text-xs text-slate-500 dark:text-slate-400">
-                                {{ $row['material']->unit }}
-                            </span>
+                            <span class="text-xs text-slate-500 dark:text-slate-400">{{ $row['material']->unit }}</span>
                         </td>
                         <td class="p-3 text-right text-slate-800 dark:text-white">
                             {{ number_format($row['stock_awal'], 2, ',', '.') }}
                         </td>
                         <td class="p-3 text-right">
-                            @if($closing && !$closing->is_locked)
+                            @if($isEditable)
                                 <div class="ml-auto flex w-36 items-center overflow-hidden rounded-lg border border-slate-300 bg-white focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-800">
                                     <span class="pl-2 text-xs font-semibold text-slate-500 dark:text-slate-400">Rp</span>
                                     <input
@@ -90,7 +129,7 @@
                             {{ $row['purchase_value'] > 0 ? 'Rp' . number_format($row['purchase_value'], 0, ',', '.') : '' }}
                         </td>
                         <td class="p-3 text-right">
-                            @if($closing && !$closing->is_locked)
+                            @if($isEditable)
                                 <input
                                     type="number"
                                     step="0.01"
@@ -115,47 +154,24 @@
                     </tr>
                 @endforelse
 
-                {{-- Baris fixed costs --}}
-                @if(isset($closing))
-                    @php
-                        $fixedRows = [
-                            ['nama' => 'Gaji Karyawan', 'nilai' => (float) ($closing->gaji_karyawan ?? 0)],
-                        ];
-
-                        if ((float) ($closing->operasional ?? 0) > 0) {
-                            $fixedRows[] = ['nama' => 'Operasional', 'nilai' => (float) $closing->operasional];
-                        }
-
-                        if ((float) ($closing->teknisi_mesin ?? 0) > 0) {
-                            $fixedRows[] = ['nama' => 'Teknisi Mesin', 'nilai' => (float) $closing->teknisi_mesin];
-                        }
-                    @endphp
-
-                    @foreach($fixedRows as $fr)
-                        @if($fr['nilai'] > 0)
-                            <tr class="border-b border-slate-100 bg-amber-50/50 dark:border-slate-700 dark:bg-amber-500/10">
-                                <td class="p-3 font-medium text-slate-700 dark:text-white">{{ $fr['nama'] }}</td>
-                                <td class="p-3"></td>
-                                <td class="p-3"></td>
-                                <td class="p-3"></td>
-                                <td class="p-3 text-right font-semibold text-slate-800 dark:text-white">
-                                    Rp{{ number_format($fr['nilai'], 0, ',', '.') }}
-                                </td>
-                                <td class="p-3"></td>
-                            </tr>
-                        @endif
-                    @endforeach
-                @endif
+                {{-- Baris biaya tetap + rekonsiliasi --}}
+                @foreach($fixedRows as $fr)
+                    @if($fr['nilai'] != 0)
+                        <tr class="border-b border-slate-100 bg-amber-50/50 dark:border-slate-700 dark:bg-amber-500/10">
+                            <td class="p-3 font-medium text-slate-700 dark:text-white">{{ $fr['nama'] }}</td>
+                            <td class="p-3"></td>
+                            <td class="p-3"></td>
+                            <td class="p-3"></td>
+                            <td class="p-3 text-right font-semibold text-slate-800 dark:text-white">
+                                Rp{{ number_format($fr['nilai'], 0, ',', '.') }}
+                            </td>
+                            <td class="p-3"></td>
+                        </tr>
+                    @endif
+                @endforeach
             </tbody>
 
             @if($materialRows->isNotEmpty())
-                @php
-                    $totalAll = $totalPembelian
-                        + (float) ($closing->gaji_karyawan ?? 0)
-                        + (float) ($closing->operasional ?? 0)
-                        + (float) ($closing->teknisi_mesin ?? 0);
-                @endphp
-
                 <tfoot>
                     <tr class="border-t-2 border-slate-800 bg-slate-50 dark:border-slate-700 dark:bg-slate-900">
                         <td class="p-3 font-bold text-slate-800 dark:text-white">Total</td>
@@ -172,19 +188,16 @@
         </table>
     </div>
 
-    @if(!$closing?->is_locked && $closing)
-        <div class="border-t border-slate-200 px-5 py-4 dark:border-slate-700">
-            <button
-                type="submit"
-                form="form-stock-akhir"
-                class="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700"
-            >
-                Simpan Harga & Stock Akhir
-            </button>
-        </div>
-    @endif
-
-    @if(!$closing?->is_locked && $closing)
+    @if($isEditable)
+            <div class="border-t border-slate-200 px-5 py-4 dark:border-slate-700">
+                <button
+                    type="submit"
+                    form="form-stock-akhir"
+                    class="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700"
+                >
+                    Simpan Harga & Stock Akhir
+                </button>
+            </div>
         </form>
     @endif
 </div>

@@ -21,9 +21,22 @@
                 <span class="inline-flex rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1.5 text-xs font-bold dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20">
                     Terkunci sejak {{ $closing->locked_at?->translatedFormat('d M Y H:i') }}
                 </span>
+
+                @if($canManageLocked)
+                    <form method="POST" action="{{ route('closing.unlock') }}" onsubmit="return confirm('Buka kunci closing ini? Data akan bisa diedit kembali.');">
+                        @csrf
+                        <input type="hidden" name="branch_id" value="{{ $closing->branch_id }}">
+                        <input type="hidden" name="month" value="{{ $closing->month }}">
+                        <input type="hidden" name="year" value="{{ $closing->year }}">
+                        <button type="submit" class="inline-flex items-center gap-2 rounded-xl bg-slate-700 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 transition dark:bg-slate-600 dark:hover:bg-slate-500">
+                            <x-heroicon-o-lock-open class="h-4 w-4" /> Buka Kunci
+                        </button>
+                    </form>
+                @endif
             @else
-                <form method="POST" action="{{ route('closing.lock') }}" onsubmit="return confirm('Kunci closing bulan ini? Stok material akan diperbarui sesuai Stock Akhir dan tidak bisa diedit lagi.');">
+                <form method="POST" action="{{ route('closing.lock') }}" onsubmit="return confirm('Kunci closing bulan ini? Stok material akan diperbarui sesuai Stock Akhir. Setelah dikunci hanya super admin/owner yang bisa mengeditnya.');">
                     @csrf
+                    <input type="hidden" name="branch_id" value="{{ $closing->branch_id }}">
                     <input type="hidden" name="month" value="{{ $closing->month }}">
                     <input type="hidden" name="year" value="{{ $closing->year }}">
                     <button type="submit" class="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 transition dark:bg-amber-500 dark:hover:bg-amber-600">
@@ -37,6 +50,12 @@
     @if(session('message'))
         <div class="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-400">
             {{ session('message') }}
+        </div>
+    @endif
+
+    @if(session('warning'))
+        <div class="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-400">
+            {{ session('warning') }}
         </div>
     @endif
 
@@ -231,6 +250,7 @@
 
         <form method="POST" action="{{ route('closing.update-stock-akhir') }}">
             @csrf
+            <input type="hidden" name="branch_id" value="{{ $closing->branch_id }}">
             <input type="hidden" name="month" value="{{ $closing->month }}">
             <input type="hidden" name="year" value="{{ $closing->year }}">
 
@@ -263,7 +283,7 @@
                                     <input type="hidden" name="stock_akhir[{{ $row['id'] }}]" value="{{ $stockAkhir }}">
                                 </td>
                                 <td class="p-4 text-right">
-                                    @if(!$closing->is_locked)
+                                    @if(!$closing->is_locked || $canManageLocked)
                                         <div class="ml-auto flex w-44 items-center overflow-hidden rounded-xl border border-[#E2E8F0] bg-white focus-within:border-[#2563EB] focus-within:ring-2 focus-within:ring-[#2563EB]/20 dark:border-[#253247] dark:bg-[#111827]">
                                             <span class="px-3 text-xs font-semibold text-[#64748B] dark:text-[#94A3B8]">Rp</span>
                                             <input
@@ -304,7 +324,7 @@
                 </table>
             </div>
 
-            @if(!$closing->is_locked && $materialRows->isNotEmpty())
+            @if((!$closing->is_locked || $canManageLocked) && $materialRows->isNotEmpty())
                 <div class="flex justify-end border-t border-[#E2E8F0] p-4 dark:border-[#253247]">
                     <button type="submit" class="rounded-xl bg-[#2563EB] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#1D4ED8] dark:bg-[#3B82F6] dark:hover:bg-[#60A5FA]">
                         Simpan Harga SO
@@ -314,7 +334,7 @@
         </form>
     </div>
 
-    @if(!$closing->is_locked)
+    @if(!$closing->is_locked || $canManageLocked)
         <script>
             document.addEventListener('DOMContentLoaded', () => {
                 const formatRupiah = (value) =>
@@ -352,6 +372,7 @@
         'materialValue' => $materialValue,
         'closing' => $closing,
         'hpp' => $hpp,
+        'canManageLocked' => $canManageLocked,
     ])
 
     {{-- SECTION 6: HPP PER METER DETAIL --}}
@@ -414,18 +435,19 @@
         @if(!($pdfView ?? false))
             <form method="POST" action="{{ route('closing.settings') }}" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 @csrf
+                <input type="hidden" name="branch_id" value="{{ $closing->branch_id }}">
                 <input type="hidden" name="month" value="{{ $closing->month }}">
                 <input type="hidden" name="year" value="{{ $closing->year }}">
 
                 @foreach($manualFields as $field => $label)
                     <div>
                         <label class="block text-xs font-semibold uppercase tracking-wide text-[#64748B] mb-1 dark:text-[#94A3B8]">{{ $label }}</label>
-                        <input type="number" step=".01" name="{{ $field }}" value="{{ $closing->{$field} }}" @disabled($closing->is_locked)
+                        <input type="number" step=".01" name="{{ $field }}" value="{{ $closing->{$field} }}" @disabled($closing->is_locked && ! $canManageLocked)
                                class="w-full rounded-xl border border-[#E2E8F0] bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB] outline-none transition disabled:bg-[#F8FAFC] disabled:text-[#94A3B8] dark:border-[#253247] dark:bg-[#111827] dark:text-[#F8FAFC] dark:disabled:bg-[#0B1220] dark:disabled:text-[#64748B]">
                     </div>
                 @endforeach
 
-                @if(!$closing->is_locked)
+                @if(!$closing->is_locked || $canManageLocked)
                     <div class="sm:col-span-2 lg:col-span-3">
                         <button type="submit" class="rounded-xl bg-[#2563EB] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#1D4ED8] transition dark:bg-[#3B82F6] dark:hover:bg-[#60A5FA]">
                             Simpan Data Manual
