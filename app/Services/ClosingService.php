@@ -755,7 +755,12 @@ class ClosingService
                     $fifo = $this->calculateFifoCost($openingLayers, $materialPurchases, $usage, $stockAwal);
                     $inventoryLayers = $fifo['ending_layers'];
                     $materialCost = $fifo['consumed_value'];
-                    $stockValue = $stockAkhir * $soUnitCost;
+                    // RAPLY closing inventory is valued from the remaining FIFO
+                    // layers. harga_komponen is stock-opname input and must not
+                    // overwrite the actual purchase-layer valuation.
+                    $stockValue = collect($inventoryLayers)->sum(
+                        fn ($layer) => (float) ($layer['quantity'] ?? 0) * (float) ($layer['unit_price'] ?? 0)
+                    );
                     $valuationWarning = $fifo['unpriced_opening'];
                     $priceWarning = $pembelianQty <= 0
                         && ! collect($openingLayers)->contains(fn ($layer) => (float) ($layer['unit_price'] ?? 0) > 0);
@@ -1057,8 +1062,9 @@ class ClosingService
                 $excess -= $removed;
             }
         } elseif ($layerQty < $openingQty) {
-            $lastLayer = $layers[array_key_last($layers)];
-            $layers[] = ['quantity' => $openingQty - $layerQty, 'unit_price' => $lastLayer['unit_price']];
+            // The missing quantity has no traceable FIFO cost. Keep it visible
+            // as unpriced rather than copying a neighboring layer's price.
+            $layers[] = ['quantity' => $openingQty - $layerQty, 'unit_price' => 0.0];
         }
 
         return array_values(array_filter($layers, fn ($layer) => $layer['quantity'] > 0));

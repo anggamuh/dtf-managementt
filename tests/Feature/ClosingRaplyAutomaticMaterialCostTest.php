@@ -55,6 +55,7 @@ class ClosingRaplyAutomaticMaterialCostTest extends TestCase
         $this->assertEquals(15.0, $augustRows[0]['purchase_details'][1]['quantity']);
         $this->assertEquals(9600000.0, (float) $august->fresh()->hpp);
         $this->assertCount(2, $augustComponent->fresh()->persediaan_lapisan);
+        $this->assertEquals(39000000.0, (float) $augustRows[0]['stock_value']);
 
         $september = $this->closing($raply, 9, 2026, '2026-09-01', '2026-09-30');
         $septemberComponent = $september->materials()->create(['material_id' => $pet->id, 'stock_awal' => 80, 'stock_akhir' => 90]);
@@ -67,6 +68,7 @@ class ClosingRaplyAutomaticMaterialCostTest extends TestCase
         $this->assertEquals(600000.0, $septemberRows[0]['purchase_details'][0]['unit_price']);
         $this->assertEquals(4800000.0, (float) $september->fresh()->hpp);
         $this->assertCount(3, $septemberComponent->fresh()->persediaan_lapisan);
+        $this->assertEquals(46200000.0, (float) $septemberRows[0]['stock_value']);
 
         $october = $this->closing($raply, 10, 2026, '2026-10-01', '2026-10-31');
         $october->materials()->create(['material_id' => $pet->id, 'stock_awal' => 90, 'stock_akhir' => 90]);
@@ -135,6 +137,31 @@ class ClosingRaplyAutomaticMaterialCostTest extends TestCase
 
         $this->assertTrue($rows[0]['price_warning']);
         $this->assertSame(0.0, (float) $rows[0]['unit_cost']);
+    }
+
+    public function test_raply_does_not_assign_a_known_fifo_price_to_untraced_opening_quantity(): void
+    {
+        $raply = Branch::create(['name' => 'RAPLY', 'code' => 'RAPLY', 'active' => true]);
+        $material = Material::create(['branch_id' => $raply->id, 'name' => 'PET FILM', 'unit' => 'kg', 'stock' => 10, 'minimum_stock' => 0, 'price' => 0, 'is_active' => true]);
+        $previous = $this->closing($raply, 7, 2026, '2026-07-01', '2026-07-31');
+        $previous->materials()->create([
+            'material_id' => $material->id,
+            'stock_awal' => 5,
+            'stock_akhir' => 10,
+            'harga_komponen' => 0,
+            'persediaan_lapisan' => [['quantity' => 5, 'unit_price' => 100]],
+        ]);
+        $current = $this->closing($raply, 8, 2026, '2026-08-01', '2026-08-31');
+        $current->materials()->create(['material_id' => $material->id, 'stock_awal' => 10, 'stock_akhir' => 10]);
+
+        $rows = app(ClosingService::class)->getMaterialRows($raply->id, now()->parse('2026-08-01'), now()->parse('2026-08-31'), $current);
+
+        $this->assertTrue($rows[0]['valuation_warning']);
+        $this->assertEquals([
+            ['quantity' => 5.0, 'unit_price' => 100.0],
+            ['quantity' => 5.0, 'unit_price' => 0.0],
+        ], $rows[0]['opening_layers']);
+        $this->assertSame(500.0, (float) $rows[0]['stock_value']);
     }
 
     private function closing(Branch $branch, int $month, int $year, string $start, string $end): Closing
