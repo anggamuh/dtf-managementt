@@ -12,7 +12,7 @@ use App\Services\ClosingService;
 use App\Services\SpreadsheetPasteImporter;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Validation\ValidationException;
+use Carbon\Carbon;
 use Tests\TestCase;
 
 class MachineMaterialSeparationTest extends TestCase
@@ -80,30 +80,34 @@ class MachineMaterialSeparationTest extends TestCase
         $this->assertSame(2, Material::where('branch_id', $this->raply->id)->count());
     }
 
-    public function test_import_targets_only_the_selected_machine_and_epul_needs_no_machine(): void
+    public function test_expense_paste_import_matches_merged_material_without_machine_selection(): void
     {
+        $powder = $this->material($this->raply, 'Powder');
         $powder2 = $this->material($this->raply, 'Powder', $this->twoHead);
         $powder4 = $this->material($this->raply, 'Powder', $this->fourHead);
+        $powder2->update(['is_active' => false]);
+        $powder4->update(['is_active' => false]);
         $importer = app(SpreadsheetPasteImporter::class);
 
-        $importer->importExpenses($this->paste('POWDER (2 Head)', 10, 870000), $this->raply->id, $this->fourHead->id);
-        $this->assertSame(0.0, (float) $powder2->fresh()->stock);
-        $this->assertSame(10.0, (float) $powder4->fresh()->stock);
+        $importer->importExpenses($this->paste('POWDER (2 Head)', 10, 870000), $this->raply->id);
+        $this->assertSame(10.0, (float) $powder->fresh()->stock);
 
-        $importer->importExpenses($this->paste(' powder ', 3, 261000), $this->raply->id, $this->twoHead->id);
-        $this->assertSame(3.0, (float) $powder2->fresh()->stock);
-        $this->assertSame(10.0, (float) $powder4->fresh()->stock);
+        $importer->importExpenses($this->paste(' powder (4 Head) ', 3, 261000), $this->raply->id);
+        $this->assertSame(13.0, (float) $powder->fresh()->stock);
+        $this->assertSame(2, Expense::where('branch_id', $this->raply->id)->where('material_id', $powder->id)->count());
 
         $epulPowder = $this->material($this->epul, 'Powder');
         $importer->importExpenses($this->paste('Powder', 2, 100), $this->epul->id);
         $this->assertSame(2.0, (float) $epulPowder->fresh()->stock);
     }
 
-    public function test_import_rejects_a_machine_from_another_branch(): void
+    public function test_expense_paste_page_has_no_machine_picker(): void
     {
-        $other = Machine::create(['branch_id' => $this->epul->id, 'name' => 'Other', 'code' => 'OH', 'head_count' => 8, 'is_active' => true]);
-        $this->expectException(ValidationException::class);
-        app(SpreadsheetPasteImporter::class)->importExpenses($this->paste('Powder', 1, 1), $this->raply->id, $other->id);
+        $this->actingAs($this->admin)
+            ->get(route('imports.expenses.form', ['branch_id' => $this->raply->id]))
+            ->assertOk()
+            ->assertDontSee('name="machine_id"', false)
+            ->assertSee('Paste pengeluaran dari Excel');
     }
 
     public function test_branch_user_cannot_submit_raply_machine_for_another_branch(): void
@@ -121,13 +125,13 @@ class MachineMaterialSeparationTest extends TestCase
         ])->assertSessionHasErrors('machine_id');
     }
 
-    public function test_imported_new_material_uses_selected_machine_and_reports_it(): void
+    public function test_imported_new_raply_material_is_created_as_shared_material(): void
     {
         $importer = app(SpreadsheetPasteImporter::class);
-        $importer->importExpenses($this->paste('Tinta Putih', 2, 100), $this->raply->id, $this->fourHead->id);
+        $importer->importExpenses($this->paste('Tinta Putih', 2, 100), $this->raply->id);
 
-        $this->assertDatabaseHas('materials', ['branch_id' => $this->raply->id, 'machine_id' => $this->fourHead->id, 'name' => 'Tinta Putih']);
-        $this->assertSame(['Tinta Putih (4 Head)'], $importer->createdMaterialNames());
+        $this->assertDatabaseHas('materials', ['branch_id' => $this->raply->id, 'machine_id' => null, 'name' => 'Tinta Putih']);
+        $this->assertSame(['Tinta Putih'], $importer->createdMaterialNames());
     }
 
     public function test_display_name_search_can_find_material_by_name_and_head_count(): void
@@ -155,7 +159,7 @@ class MachineMaterialSeparationTest extends TestCase
         $this->assertSame(10.0, (float) $powder4->fresh()->stock);
         $this->assertSame(0.0, (float) $powder2->fresh()->stock);
 
-        $this->actingAs($this->admin)->put(route('expenses.update', $expense), array_merge($payload, ['quantity' => 4, 'machine_id' => $this->twoHead->id, 'material_id' => $powder2->id]))->assertSessionDoesntHaveErrors();
+        $this->actingAs($this->admin)->post(route('expenses.update', $expense), array_merge($payload, ['quantity' => 4, 'machine_id' => $this->twoHead->id, 'material_id' => $powder2->id]))->assertSessionDoesntHaveErrors();
         $this->assertSame(0.0, (float) $powder4->fresh()->stock);
         $this->assertSame(4.0, (float) $powder2->fresh()->stock);
 
@@ -163,20 +167,38 @@ class MachineMaterialSeparationTest extends TestCase
         $this->assertSame(0.0, (float) $powder2->fresh()->stock);
     }
 
-    public function test_closing_keeps_machine_materials_separate_and_sums_hpp(): void
+    public function test_raply_closing_uses_fifo_expense_prices_for_merged_machine_material(): void
     {
-        $powder2 = $this->material($this->raply, 'Powder', $this->twoHead);
-        $powder4 = $this->material($this->raply, 'Powder', $this->fourHead);
+        $powder = $this->material($this->raply, 'Powder');
+        $powder2 = $this->material($this->raply, 'Powder (2 Head)', $this->twoHead);
+        $powder4 = $this->material($this->raply, 'Powder (4 Head)', $this->fourHead);
+        $powder2->update(['is_active' => false]);
+        $powder4->update(['is_active' => false]);
         $closing = Closing::create(['branch_id' => $this->raply->id, 'month' => 9, 'year' => 2026, 'income' => 0, 'expense' => 0, 'hpp' => 0, 'profit' => 0, 'remaining_material' => 0]);
-        $closing->materials()->create(['material_id' => $powder2->id, 'stock_awal' => 0, 'qty' => 10, 'stock_akhir' => 2, 'harga_komponen' => 5, 'pembelian' => 50]);
-        $closing->materials()->create(['material_id' => $powder4->id, 'stock_awal' => 0, 'qty' => 5, 'stock_akhir' => 1, 'harga_komponen' => 10, 'pembelian' => 50]);
+        $closing->materials()->create(['material_id' => $powder->id, 'stock_awal' => 0, 'qty' => 0, 'stock_akhir' => 3, 'harga_komponen' => 0, 'pembelian' => 0]);
+        foreach ([[$powder2, 10, 50], [$powder4, 5, 50]] as [$source, $quantity, $amount]) {
+            Expense::create([
+                'branch_id' => $this->raply->id,
+                'material_id' => $source->id,
+                'date' => '2026-09-10',
+                'category' => 'Bahan Baku',
+                'description' => $source->name,
+                'amount' => $amount,
+                'quantity' => $quantity,
+                'payment_method' => 'Tunai',
+            ]);
+        }
 
         $service = app(ClosingService::class);
         $rows = $service->buildMaterialRows($this->raply->id, 9, 2026, $closing);
-        $this->assertCount(2, $rows);
-        $this->assertEqualsCanonicalizing(['Powder (2 Head)', 'Powder (4 Head)'], $rows->pluck('material.display_name')->all());
-        $service->calculateHpp($closing, now()->startOfMonth(), now()->endOfMonth());
-        $this->assertSame(80.0, (float) $closing->fresh()->hpp);
+        $this->assertCount(1, $rows);
+        $this->assertSame(15.0, (float) $rows[0]['incoming_quantity']);
+        $this->assertSame(100.0, (float) $rows[0]['purchase_value']);
+        $this->assertCount(2, $rows[0]['purchase_details']);
+        $this->assertEquals(5, $rows[0]['purchase_details'][0]['unit_price']);
+        $this->assertEquals(10, $rows[0]['purchase_details'][1]['unit_price']);
+        $service->calculateHpp($closing, Carbon::parse('2026-09-01'), Carbon::parse('2026-09-30'));
+        $this->assertSame(70.0, (float) $closing->fresh()->hpp);
     }
 
     public function test_legacy_stock_stays_unassigned_until_split_and_split_preserves_total(): void

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Closing;
 use App\Models\ClosingMaterial;
+use App\Models\Branch;
 use App\Models\Expense;
 use App\Models\Invoice;
 use App\Models\Material;
@@ -262,8 +263,7 @@ class ClosingService
         );
 
         $remainingMaterial = $materialRows->sum(
-            fn ($row) => (float) $row['stock_akhir']
-                * (float) $row['unit_cost']
+            fn ($row) => (float) ($row['stock_value'] ?? ((float) $row['stock_akhir'] * (float) ($row['unit_cost'] ?? 0)))
         );
 
         /*
@@ -632,8 +632,8 @@ class ClosingService
      * pembelian:
      *     SUM(expense.amount)
      *
-     * harga_komponen:
-     *     tidak diubah di sini karena diisi manual per closing
+     * Harga RAPLY tetap mengikuti harga transaksi; lapisan stok ditetapkan
+     * ketika HPP dihitung.
      *
      * stock_akhir:
      *     TIDAK diubah otomatis.
@@ -643,18 +643,11 @@ class ClosingService
         Carbon $start,
         Carbon $end
     ): void {
-        $purchases = Expense::query()
-            ->where('branch_id', $closing->branch_id)
-            ->where('category', 'Bahan Baku')
-            ->whereBetween('date', [
-                $start->copy()->startOfDay(),
-                $end->copy()->endOfDay(),
-            ])
-            ->whereNotNull('material_id')
-            ->whereNotNull('quantity')
-            ->get()
-            ->groupBy('material_id');
-
+        $purchases = $this->materialPurchasesForPeriod(
+            (int) $closing->branch_id,
+            $start,
+            $end
+        );
         $closing->loadMissing(
             'materials.material.machine'
         );
@@ -662,25 +655,20 @@ class ClosingService
         foreach ($closing->materials as $component) {
             $materialId = $component->material_id;
 
-            $materialPurchases = $purchases->get(
-                $materialId
-            );
+            $materialPurchases = $purchases->get($materialId, collect());
 
             $incomingQty = 0;
             $purchaseValue = 0;
 
-            if ($materialPurchases) {
-                $incomingQty = (float) $materialPurchases
-                    ->sum('quantity');
+            $incomingQty = (float) $materialPurchases->sum('quantity');
+            $purchaseValue = (float) $materialPurchases->sum('amount');
 
-                $purchaseValue = (float) $materialPurchases
-                    ->sum('amount');
-            }
-
-            $component->update([
+            $updates = [
                 'qty' => $incomingQty,
                 'pembelian' => $purchaseValue,
-            ]);
+            ];
+
+            $component->update($updates);
         }
     }
 
@@ -733,8 +721,17 @@ class ClosingService
             );
         }
 
+        $isRaply = $this->isRaplyBranch($branchId);
+        $priceContext = $closing ?? new Closing([
+            'branch_id' => $branchId,
+            'month' => $start->month,
+            'year' => $start->year,
+            'period_start' => $start,
+            'period_end' => $end,
+        ]);
+
         return $componentSource->map(
-            function ($component) use ($purchases) {
+            function ($component) use ($purchases, $isRaply, $priceContext) {
                 $stockAwal = (float) $component->stock_awal;
                 $materialPurchases = $purchases->get(
                     $component->material_id,
@@ -743,7 +740,36 @@ class ClosingService
                 $pembelianQty = (float) $materialPurchases->sum('quantity');
                 $purchaseValue = (float) $materialPurchases->sum('amount');
                 $stockAkhir = (float) $component->stock_akhir;
-                $harga = (float) $component->harga_komponen;
+                $usage = max(0, $stockAwal + $pembelianQty - $stockAkhir);
+                $material = $component->material;
+                $priceWarning = false;
+                $purchaseDetails = collect();
+                $inventoryLayers = [];
+                $inventoryUnitCost = (float) $component->harga_komponen;
+                $materialCost = 0.0;
+                $soUnitCost = (float) $component->harga_komponen;
+                $stockValue = $stockAkhir * $soUnitCost;
+                if ($isRaply && $material) {
+                    $purchaseDetails = $this->groupPurchasesByPrice($materialPurchases);
+                    $openingLayers = $this->previousClosingMaterialLayers($priceContext, $material, $stockAwal);
+                    $fifo = $this->calculateFifoCost($openingLayers, $materialPurchases, $usage, $stockAwal);
+                    $inventoryLayers = $fifo['ending_layers'];
+                    $materialCost = $fifo['consumed_value'];
+                    $stockValue = $stockAkhir * $soUnitCost;
+                    $valuationWarning = $fifo['unpriced_opening'];
+                    $priceWarning = $pembelianQty <= 0
+                        && ! collect($openingLayers)->contains(fn ($layer) => (float) ($layer['unit_price'] ?? 0) > 0);
+                    $harga = $purchaseDetails->count() === 1
+                        ? (float) $purchaseDetails->first()['unit_price']
+                        : null;
+                    $inventoryUnitCost = null;
+                } else {
+                    $harga = (float) $component->harga_komponen;
+                    $inventoryUnitCost = $harga;
+                    $materialCost = $usage * $inventoryUnitCost;
+                    $stockValue = $stockAkhir * $inventoryUnitCost;
+                    $valuationWarning = false;
+                }
 
                 /*
                  * RUMUS UTAMA
@@ -752,23 +778,6 @@ class ClosingService
                  * + Pembelian
                  * - Stok Akhir
                  */
-                $usage = $stockAwal
-                    + $pembelianQty
-                    - $stockAkhir;
-
-                /*
-                 * Jangan sampai nilai pemakaian negatif
-                 * karena stok akhir lebih besar.
-                 */
-                $usage = max(0, $usage);
-
-                /*
-                 * Total harga material:
-                 *
-                 * Pemakaian × harga material tetap.
-                 */
-                $materialCost = $usage * $harga;
-
                 return [
                     'id' => $component->id,
 
@@ -786,6 +795,22 @@ class ClosingService
 
                     'unit_cost' => $harga,
 
+                    'so_unit_cost' => $soUnitCost,
+
+                    'inventory_unit_cost' => $inventoryUnitCost,
+
+                    'purchase_details' => $purchaseDetails,
+
+                    'opening_layers' => $isRaply ? $openingLayers : [],
+
+                    'inventory_layers' => $inventoryLayers,
+
+                    'stock_value' => $stockValue,
+
+                    'price_warning' => $priceWarning,
+
+                    'valuation_warning' => $valuationWarning,
+
                     'material_cost' => $materialCost,
 
                     // Legacy aliases
@@ -801,7 +826,7 @@ class ClosingService
 
                     'value' => $materialCost,
 
-                    'stockValue' => $stockAkhir * $harga,
+                    'stockValue' => $stockValue,
                 ];
             }
         )->sortBy(function ($row) {
@@ -894,16 +919,212 @@ class ClosingService
         Carbon $start,
         Carbon $end
     ): Collection {
-        return Expense::query()
+        $query = Expense::query()
             ->where('branch_id', $branchId)
             ->where('category', 'Bahan Baku')
             ->whereBetween('date', [
                 $start->copy()->startOfDay(),
                 $end->copy()->endOfDay(),
             ])
-            ->whereNotNull('material_id')
+            ->orderBy('date')
+            ->orderBy('id');
+        $query->whereNotNull('quantity');
+
+        if (! $this->isRaplyBranch($branchId)) {
+            $query->whereNotNull('material_id');
+            return $query->get()->groupBy('material_id');
+        }
+
+        // Legacy RAPLY purchases can still reference separate 2/4 Head rows.
+        // Match normalized names to the single active shared material without
+        // changing any historical Expense or its original material_id.
+        $canonicalMaterials = Material::query()
+            ->where('branch_id', $branchId)
+            ->where('is_active', true)
+            ->with('machine')
             ->get()
-            ->groupBy('material_id');
+            ->sortBy(fn ($material) => $material->machine_id === null ? 0 : 1)
+            ->groupBy(fn ($material) => $this->normalizeMaterialName($material->name))
+            ->map(fn ($group) => $group->first());
+
+        $grouped = collect();
+        foreach ($query->with('material')->get() as $expense) {
+            $normalizedName = $this->normalizeMaterialName($expense->material?->name ?? $expense->description);
+            $canonical = $canonicalMaterials->get($normalizedName);
+            if ($canonical) {
+                $grouped->put(
+                    $canonical->id,
+                    $grouped->get($canonical->id, collect())->push($expense)
+                );
+            }
+        }
+
+        return $grouped;
+    }
+
+    private function isRaplyBranch(int $branchId): bool
+    {
+        return Branch::query()->whereKey($branchId)->where('code', 'RAPLY')->exists();
+    }
+
+    private function normalizeMaterialName(?string $name): string
+    {
+        $name = preg_replace('/\s*\(\s*[24]\s*head\s*\)\s*$/iu', '', trim((string) $name));
+        return mb_strtoupper(preg_replace('/\s+/', ' ', trim($name)));
+    }
+
+    private function groupPurchasesByPrice(Collection $purchases): Collection
+    {
+        return $purchases
+            ->filter(fn ($expense) => (float) $expense->quantity > 0)
+            ->groupBy(fn ($expense) => number_format((float) $expense->amount / (float) $expense->quantity, 2, '.', ''))
+            ->map(fn ($group, $price) => [
+                'unit_price' => (float) $price,
+                'quantity' => (float) $group->sum('quantity'),
+                'amount' => (float) $group->sum('amount'),
+            ])
+            ->sortBy('unit_price')
+            ->values();
+    }
+
+    private function previousClosingMaterialRecord(Closing $closing, Material $material): ?ClosingMaterial
+    {
+        $periodStart = $closing->period_start
+            ? Carbon::parse($closing->period_start)->toDateString()
+            : Carbon::create((int) $closing->year, (int) $closing->month, 1)->startOfMonth()->toDateString();
+
+        $previousClosings = Closing::query()
+            ->where('branch_id', $closing->branch_id)
+            ->when($closing->exists, fn ($query) => $query->where('id', '!=', $closing->id))
+            ->where(function ($query) use ($periodStart, $closing) {
+                $query->where('period_end', '<', $periodStart)
+                    ->orWhere(function ($legacy) use ($closing) {
+                        $legacy->whereNull('period_end')
+                            ->where(function ($date) use ($closing) {
+                                $date->where('year', '<', $closing->year)
+                                    ->orWhere(fn ($sameYear) => $sameYear->where('year', $closing->year)->where('month', '<', $closing->month));
+                            });
+                    });
+            })
+            ->with('materials.material')
+            ->orderByDesc('period_end')
+            ->orderByDesc('year')
+            ->orderByDesc('month')
+            ->orderByDesc('id')
+            ->get();
+
+        $normalized = $this->normalizeMaterialName($material->name);
+        foreach ($previousClosings as $previousClosing) {
+            $match = $previousClosing->materials->first(function ($component) use ($material, $normalized) {
+                return (int) $component->material_id === (int) $material->id
+                    || $this->normalizeMaterialName($component->material?->name) === $normalized;
+            });
+            if ($match) {
+                return $match;
+            }
+        }
+
+        return null;
+    }
+
+    private function previousClosingMaterialLayers(Closing $closing, Material $material, float $openingQty): array
+    {
+        if ($openingQty <= 0) {
+            return [];
+        }
+
+        $record = $this->previousClosingMaterialRecord($closing, $material);
+        $layers = collect($record?->persediaan_lapisan ?? [])
+            ->map(fn ($layer) => [
+                'quantity' => max(0, (float) ($layer['quantity'] ?? 0)),
+                'unit_price' => max(0, (float) ($layer['unit_price'] ?? 0)),
+            ])
+            ->filter(fn ($layer) => $layer['quantity'] > 0)
+            ->values()
+            ->all();
+
+        if ($layers === []) {
+            $legacyPrice = (float) ($record?->harga_persediaan ?? $record?->harga_komponen ?? 0);
+            return $legacyPrice > 0 ? [['quantity' => $openingQty, 'unit_price' => $legacyPrice]] : [];
+        }
+
+        $layerQty = array_sum(array_column($layers, 'quantity'));
+        if ($layerQty > $openingQty) {
+            $excess = $layerQty - $openingQty;
+            for ($index = count($layers) - 1; $index >= 0 && $excess > 0; $index--) {
+                $removed = min($excess, $layers[$index]['quantity']);
+                $layers[$index]['quantity'] -= $removed;
+                $excess -= $removed;
+            }
+        } elseif ($layerQty < $openingQty) {
+            $lastLayer = $layers[array_key_last($layers)];
+            $layers[] = ['quantity' => $openingQty - $layerQty, 'unit_price' => $lastLayer['unit_price']];
+        }
+
+        return array_values(array_filter($layers, fn ($layer) => $layer['quantity'] > 0));
+    }
+
+    private function calculateFifoCost(array $openingLayers, Collection $purchases, float $usage, float $openingQty): array
+    {
+        $layers = $openingLayers;
+        $openingLayerQty = array_sum(array_column($layers, 'quantity'));
+        $pricedOpeningQty = collect($layers)
+            ->filter(fn ($layer) => (float) ($layer['unit_price'] ?? 0) > 0)
+            ->sum('quantity');
+        $unpricedOpening = $openingQty > $pricedOpeningQty;
+        if ($openingLayerQty < $openingQty && $openingLayerQty === 0) {
+            // Unknown legacy opening stock remains visible as unvalued stock.
+            $layers[] = ['quantity' => $openingQty, 'unit_price' => 0.0];
+        }
+
+        foreach ($purchases as $expense) {
+            $quantity = (float) $expense->quantity;
+            if ($quantity <= 0) {
+                continue;
+            }
+            $layers[] = [
+                'quantity' => $quantity,
+                'unit_price' => (float) $expense->amount / $quantity,
+                'expense_id' => (int) $expense->id,
+                'date' => Carbon::parse($expense->date)->toDateString(),
+            ];
+        }
+
+        $remainingToConsume = max(0, $usage);
+        $consumedValue = 0.0;
+        foreach ($layers as $index => $layer) {
+            if ($remainingToConsume <= 0) {
+                break;
+            }
+            $consumed = min($remainingToConsume, (float) $layer['quantity']);
+            $consumedValue += $consumed * (float) $layer['unit_price'];
+            $layers[$index]['quantity'] -= $consumed;
+            $remainingToConsume -= $consumed;
+        }
+
+        $endingLayers = [];
+        foreach ($layers as $layer) {
+            if ((float) $layer['quantity'] <= 0) {
+                continue;
+            }
+            $lastIndex = array_key_last($endingLayers);
+            if ($lastIndex !== null && round((float) $endingLayers[$lastIndex]['unit_price'], 2) === round((float) $layer['unit_price'], 2)) {
+                $endingLayers[$lastIndex]['quantity'] += (float) $layer['quantity'];
+            } else {
+                $endingLayers[] = [
+                    'quantity' => (float) $layer['quantity'],
+                    'unit_price' => (float) $layer['unit_price'],
+                ];
+            }
+        }
+        $endingValue = collect($endingLayers)->sum(fn ($layer) => (float) $layer['quantity'] * (float) $layer['unit_price']);
+
+        return [
+            'consumed_value' => $consumedValue,
+            'ending_layers' => $endingLayers,
+            'ending_value' => (float) $endingValue,
+            'unpriced_opening' => $unpricedOpening,
+        ];
     }
 
     private function closingMatchesPeriod(
@@ -1031,6 +1252,19 @@ class ClosingService
             $closing
         );
 
+        if ($this->isRaplyBranch((int) $closing->branch_id)) {
+            foreach ($materialRows as $row) {
+                if (! empty($row['id'])) {
+                    ClosingMaterial::query()->whereKey($row['id'])->update([
+                        'qty' => $row['incoming_quantity'],
+                        'pembelian' => $row['purchase_value'],
+                        'persediaan_lapisan' => $row['inventory_layers'],
+                        'hpp_pemakaian' => $row['material_cost'],
+                    ]);
+                }
+            }
+        }
+
         $hppData = $this->buildHppRows(
             (int) $closing->branch_id,
             $start,
@@ -1040,12 +1274,10 @@ class ClosingService
         );
 
         /*
-         * Nilai Stock Opname (SO):
-         * Stock Akhir x Harga Manual yang sama dengan materialRows.
+         * Nilai Stock Opname mengikuti nilai lapisan persediaan yang tersisa.
          */
         $remainingMaterial = (float) $materialRows->sum(
-            fn ($row) => (float) ($row['stock_akhir'] ?? 0)
-                * (float) ($row['unit_cost'] ?? 0)
+            fn ($row) => (float) ($row['stock_value'] ?? 0)
         );
 
         $closing->update([

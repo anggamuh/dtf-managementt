@@ -236,11 +236,7 @@ class LedgerController extends Controller
                         $component->stock_akhir ?? 0
                     );
 
-                    $hargaKomponen = (float) (
-                        $component->harga_komponen ?? 0
-                    );
-
-                    return $stockAkhir * $hargaKomponen;
+                    return $stockAkhir * (float) ($component->harga_komponen ?? 0);
                 });
         }
 

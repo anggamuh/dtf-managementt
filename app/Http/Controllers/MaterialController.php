@@ -213,6 +213,15 @@ class MaterialController extends Controller
                 ->orderBy('head_count')
                 ->get();
 
+        // RAPLY material is managed as one shared inventory across its machines.
+        $isRaply = Branch::whereKey($branchId)->where('code', 'RAPLY')->exists();
+        if ($isRaply) {
+            $machines = collect();
+            $visibleMaterialIds = Material::where('branch_id', $branchId)->where('is_active', true)
+                ->when($search, fn ($q) => $q->where('name', 'like', "%{$search}%"))
+                ->pluck('id');
+        }
+
         return view(
             'materials.index',
             compact(
@@ -337,6 +346,8 @@ class MaterialController extends Controller
         } elseif ($machines->isEmpty()) {
             $d['machine_id'] = null;
         }
+
+        unset($d['price_pet_1'], $d['price_pet_2'], $d['price_pet_3'], $d['price_pet_4']);
 
         $normalizedName = mb_strtolower(
             trim(

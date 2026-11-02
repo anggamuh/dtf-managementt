@@ -16,6 +16,10 @@ class Material extends Model
         'stock',
         'minimum_stock',
         'price',
+        'price_pet_1',
+        'price_pet_2',
+        'price_pet_3',
+        'price_pet_4',
         'supplier',
         'is_active',
     ];
@@ -24,6 +28,10 @@ class Material extends Model
         'stock' => 'decimal:2',
         'minimum_stock' => 'decimal:2',
         'price' => 'decimal:2',
+        'price_pet_1' => 'decimal:2',
+        'price_pet_2' => 'decimal:2',
+        'price_pet_3' => 'decimal:2',
+        'price_pet_4' => 'decimal:2',
         'is_active' => 'boolean',
     ];
 

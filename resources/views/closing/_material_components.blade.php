@@ -3,6 +3,7 @@
     $showMachineGroups = $materialRows->contains(fn ($row) => $row['material']->machine_id !== null);
     $lastMachineGroup = null;
     $isEditable = $closing && ! $closing->is_locked;
+    $isRaply = $closing?->branch?->code === 'RAPLY';
 
     /*
      * Baris biaya tetap. Lain-lain sekarang ikut ditampilkan.
@@ -41,7 +42,7 @@
             <div>
                 <h2 class="text-lg font-bold text-slate-800 dark:text-white">Rincian Material</h2>
                 <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                    Qty terisi otomatis dari Expense kategori Bahan Baku. Harga Komponen dan Stock Akhir diisi manual.
+                    Qty dan nilai pembelian otomatis dari Expense kategori Bahan Baku. {{ $isRaply ? 'Harga dan Qty pembelian ditampilkan per harga satuan; HPP memakai lapisan FIFO dan membawa stok awal dari closing sebelumnya.' : 'Harga Komponen dan Stock Akhir diisi manual.' }}
                 </p>
             </div>
             <div class="text-sm text-slate-500 dark:text-slate-400">
@@ -103,7 +104,28 @@
                             {{ number_format($row['stock_awal'], 2, ',', '.') }}
                         </td>
                         <td class="p-3 text-right">
-                            @if($isEditable)
+                            @if($isRaply)
+                                @if($row['purchase_details']->isNotEmpty())
+                                    <details class="min-w-52 text-left">
+                                        <summary class="cursor-pointer list-inside rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-right text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">{{ $row['purchase_details']->count() }} harga satuan · rincian</summary>
+                                        <div class="mt-2 overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700">
+                                            @foreach($row['purchase_details'] as $priceRow)
+                                                <div class="flex justify-between gap-4 border-b border-slate-100 px-3 py-2 text-xs last:border-b-0 dark:border-slate-700">
+                                                    <span class="font-semibold text-slate-800 dark:text-slate-100">Rp{{ number_format($priceRow['unit_price'], 0, ',', '.') }}</span>
+                                                    <span class="text-slate-500 dark:text-slate-400">{{ number_format($priceRow['quantity'], 2, ',', '.') }} {{ $row['material']->unit }}</span>
+                                                </div>
+                                            @endforeach
+                                        </div>
+                                    </details>
+                                    @if($row['valuation_warning'])
+                                        <span class="mt-1 block text-[11px] font-medium text-amber-600 dark:text-amber-400" title="Sebagian stok awal tidak memiliki harga closing terdahulu yang valid.">Nilai sebagian stok awal belum tersedia</span>
+                                    @endif
+                                @elseif($row['price_warning'])
+                                    <span class="text-xs font-medium text-amber-600 dark:text-amber-400">Harga pembelian belum tersedia</span>
+                                @else
+                                    <span class="text-xs text-slate-500 dark:text-slate-400">Tidak ada harga pembelian pada periode ini; stok awal mengikuti lapisan FIFO sebelumnya.</span>
+                                @endif
+                            @elseif($isEditable)
                                 <div class="ml-auto flex w-36 items-center overflow-hidden rounded-lg border border-slate-300 bg-white focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-800">
                                     <span class="pl-2 text-xs font-semibold text-slate-500 dark:text-slate-400">Rp</span>
                                     <input
@@ -195,7 +217,7 @@
                     form="form-stock-akhir"
                     class="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700"
                 >
-                    Simpan Harga & Stock Akhir
+                    {{ $isRaply ? 'Simpan Stock Akhir' : 'Simpan Harga & Stock Akhir' }}
                 </button>
             </div>
         </form>

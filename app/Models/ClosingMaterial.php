@@ -12,6 +12,13 @@ class ClosingMaterial extends Model
         'material_id',
         'stock_awal',
         'harga_komponen',
+        'harga_persediaan',
+        'persediaan_lapisan',
+        'hpp_pemakaian',
+        'harga_pet_1',
+        'harga_pet_2',
+        'harga_pet_3',
+        'harga_pet_4',
         'qty',
         'pembelian',
         'stock_akhir',
@@ -20,6 +27,13 @@ class ClosingMaterial extends Model
     protected $casts = [
         'stock_awal' => 'decimal:2',
         'harga_komponen' => 'decimal:2',
+        'harga_persediaan' => 'decimal:2',
+        'persediaan_lapisan' => 'array',
+        'hpp_pemakaian' => 'decimal:2',
+        'harga_pet_1' => 'decimal:2',
+        'harga_pet_2' => 'decimal:2',
+        'harga_pet_3' => 'decimal:2',
+        'harga_pet_4' => 'decimal:2',
         'qty' => 'decimal:2',
         'pembelian' => 'decimal:2',
         'stock_akhir' => 'decimal:2',
@@ -50,6 +64,10 @@ class ClosingMaterial extends Model
      */
     public function getTotalHargaAttribute(): float
     {
-        return $this->pemakaian * (float) $this->harga_komponen;
+        if ($this->hpp_pemakaian !== null) {
+            return (float) $this->hpp_pemakaian;
+        }
+
+        return $this->pemakaian * (float) ($this->harga_persediaan ?? $this->harga_komponen);
     }
 }

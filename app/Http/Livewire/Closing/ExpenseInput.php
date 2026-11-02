@@ -3,6 +3,7 @@
 namespace App\Http\Livewire\Closing;
 
 use App\Models\Expense;
+use App\Models\Branch;
 use App\Models\Machine;
 use App\Models\Material;
 use App\Services\MaterialPurchaseService;
@@ -87,7 +88,8 @@ class ExpenseInput extends Component
 
     public function save()
     {
-        $hasMachines = Machine::where('branch_id', $this->branchId)->where('is_active', true)->exists();
+        $isRaply = Branch::whereKey($this->branchId)->where('code', 'RAPLY')->exists();
+        $hasMachines = ! $isRaply && Machine::where('branch_id', $this->branchId)->where('is_active', true)->exists();
         $this->validate([
             'rows.*.date' => 'required|date',
             'rows.*.category' => 'required|string',
@@ -170,7 +172,9 @@ class ExpenseInput extends Component
     public function render()
     {
         return view('livewire.closing.expense-input', [
-            'machines' => Machine::where('branch_id', $this->branchId)->where('is_active', true)->orderBy('head_count')->get(),
+            'machines' => Branch::whereKey($this->branchId)->where('code', 'RAPLY')->exists()
+                ? collect()
+                : Machine::where('branch_id', $this->branchId)->where('is_active', true)->orderBy('head_count')->get(),
         ]);
     }
 }

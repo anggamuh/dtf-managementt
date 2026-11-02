@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Models\Customer;
 use App\Models\Expense;
-use App\Models\Machine;
 use App\Models\Material;
 use App\Models\Order;
 use App\Models\Product;
@@ -93,18 +92,8 @@ class SpreadsheetPasteImporter
      * - Mengisi material_id dan quantity
      * - Memanggil MaterialPurchaseService::sync() untuk update stok & harga
      */
-    public function importExpenses(string $text, int $branchId, ?int $machineId = null): int
+    public function importExpenses(string $text, int $branchId): int
     {
-        $hasMachines = Machine::where('branch_id', $branchId)->where('is_active', true)->exists();
-        $validMachine = $machineId !== null && Machine::whereKey($machineId)
-            ->where('branch_id', $branchId)
-            ->where('is_active', true)
-            ->exists();
-
-        if (($hasMachines && ! $validMachine) || (! $hasMachines && $machineId !== null)) {
-            throw ValidationException::withMessages(['machine_id' => 'Mesin harus aktif dan berasal dari cabang yang dipilih.']);
-        }
-
         $rows = $this->rows($text, 8)->filter(fn ($row) => $this->date($row[0] ?? null) && filled($row[3] ?? null) && $this->money($row[6] ?? '0') > 0);
         if ($rows->isEmpty()) {
             throw ValidationException::withMessages(['paste_data' => 'Tidak ditemukan baris pengeluaran yang valid.']);
@@ -112,7 +101,7 @@ class SpreadsheetPasteImporter
 
         $this->createdMaterials = [];
 
-        return DB::transaction(function () use ($rows, $branchId, $machineId) {
+        return DB::transaction(function () use ($rows, $branchId) {
             $count = 0;
 
             foreach ($rows as $row) {
@@ -124,11 +113,7 @@ class SpreadsheetPasteImporter
                 // Untuk "Bahan Baku": cari atau buat material berdasarkan deskripsi
                 if ($category === 'Bahan Baku') {
                     $materialName = $this->baseMaterialName($row[3]);
-                    $material = Material::with('machine')->where('branch_id', $branchId)
-                        ->when($machineId, fn ($q) => $q->where('machine_id', $machineId), fn ($q) => $q->whereNull('machine_id'))
-                        ->where('is_active', true)
-                        ->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($materialName)])
-                        ->first();
+                    $material = $this->findMaterialForExpense($branchId, $materialName, $row[3]);
 
                     if (! $material) {
                         if ($materialName === '') {
@@ -136,7 +121,7 @@ class SpreadsheetPasteImporter
                         }
                         $material = Material::create([
                             'branch_id' => $branchId,
-                            'machine_id' => $machineId,
+                            'machine_id' => null,
                             'name' => $materialName,
                             'unit' => 'kg',
                             'stock' => 0,
@@ -187,6 +172,36 @@ class SpreadsheetPasteImporter
         $name = preg_replace('/\s+\d+\s*head\s*$/iu', '', $name);
 
         return trim($name);
+    }
+
+    private function findMaterialForExpense(int $branchId, string $materialName, string $description): ?Material
+    {
+        $normalized = $this->normalizeMaterialName($materialName);
+        $matches = Material::query()
+            ->where('branch_id', $branchId)
+            ->where('is_active', true)
+            ->with('machine')
+            ->get()
+            ->filter(fn ($material) => $this->normalizeMaterialName($material->name) === $normalized);
+
+        if ($matches->isEmpty()) {
+            return null;
+        }
+
+        if (preg_match('/\b([24])\s*head\b/i', $description, $headMatch)) {
+            $headCount = (int) $headMatch[1];
+            $machineMatch = $matches->first(fn ($material) => (int) ($material->machine?->head_count ?? 0) === $headCount);
+            if ($machineMatch) {
+                return $machineMatch;
+            }
+        }
+
+        return $matches->sortBy(fn ($material) => $material->machine_id === null ? 0 : 1)->first();
+    }
+
+    private function normalizeMaterialName(string $name): string
+    {
+        return mb_strtoupper(preg_replace('/\s+/', ' ', $this->baseMaterialName($name)));
     }
 
     private function rows(string $text, int $columns): Collection

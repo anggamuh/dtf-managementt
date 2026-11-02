@@ -2,7 +2,7 @@
     $totalPembelian = $materialRows->sum('purchase_value');
     $showMachineGroups = $materialRows->contains(fn ($row) => $row['material']->machine_id !== null);
     $lastMachineGroup = null;
-    $soTotal = $materialRows->sum(fn ($row) => (float) $row['stock_akhir'] * (float) $row['unit_cost']);
+    $soTotal = $materialRows->sum(fn ($row) => (float) $row['stock_akhir'] * (float) ($row['so_unit_cost'] ?? $row['unit_cost'] ?? 0));
 
     $manualFields = [
         'operasional' => 'Operasional',
@@ -231,7 +231,7 @@
 
     {{-- SECTION 5: STOCK OPNAME BAHAN BAKU --}}
     <h2>Stock Opname Bahan Baku</h2>
-    <h3 class="section-sub">Satuan diambil dari Stock Akhir material. Total = Satuan &times; Harga Manual.</h3>
+    <h3 class="section-sub">Satuan diambil dari Stock Akhir material. Total nilai Stock Opname = Stock Akhir &times; Harga manual.</h3>
     <table class="compact">
         <tr>
             <th>Stok Bahan Baku</th>
@@ -242,13 +242,15 @@
         @forelse($materialRows as $row)
             @php
                 $stockAkhir = (float) $row['stock_akhir'];
-                $hargaSo = (float) $row['unit_cost'];
+                $hargaSo = (float) ($row['so_unit_cost'] ?? $row['unit_cost'] ?? 0);
                 $totalSo = $stockAkhir * $hargaSo;
             @endphp
             <tr>
                 <td>{{ $row['material']->display_name ?? 'N/A' }}</td>
                 <td class="right">{{ number_format($stockAkhir,2,',','.') }} {{ $row['material']->unit ?? '' }}</td>
-                <td class="right nowrap">Rp {{ number_format($hargaSo,0,',','.') }}</td>
+                <td class="right nowrap">
+                    Rp {{ number_format($hargaSo,0,',','.') }}
+                </td>
                 <td class="right bold nowrap">Rp {{ number_format($totalSo,0,',','.') }}</td>
             </tr>
         @empty
@@ -291,7 +293,7 @@
 
     <h2>Rincian Material</h2>
     <h3 class="section-sub">
-        Qty terisi otomatis dari Expense kategori Bahan Baku. Harga Komponen dan Stock Akhir diisi manual.
+        Qty dan nilai pembelian otomatis dari Expense kategori Bahan Baku. {{ $branch?->code === 'RAPLY' ? 'Harga dan Qty ditampilkan per harga satuan transaksi; HPP memakai lapisan FIFO dan membawa stok awal sebelumnya.' : 'Harga Komponen dan Stock Akhir diisi manual.' }}
         &nbsp;|&nbsp; Total Pembelian: <strong>Rp {{ number_format($totalPembelian, 0, ',', '.') }}</strong>
     </h3>
 
@@ -331,7 +333,17 @@
                     <span class="muted">({{ $row['material']->unit }})</span>
                 </td>
                 <td class="right">{{ number_format($row['stock_awal'], 2, ',', '.') }}</td>
-                <td class="right nowrap">Rp {{ number_format($row['unit_cost'], 0, ',', '.') }}</td>
+                <td class="right nowrap">
+                    @if($branch?->code === 'RAPLY')
+                        @forelse($row['purchase_details'] as $priceRow)
+                            Rp {{ number_format($priceRow['unit_price'],0,',','.') }} × {{ number_format($priceRow['quantity'],2,',','.') }} {{ $row['material']->unit }}<br>
+                        @empty
+                            Tidak ada pembelian periode ini
+                        @endforelse
+                    @else
+                        Rp {{ number_format($row['unit_cost'], 0, ',', '.') }}
+                    @endif
+                </td>
                 <td class="right">
                     {{ $row['incoming_quantity'] > 0 ? number_format($row['incoming_quantity'], 2, ',', '.') : '' }}
                 </td>

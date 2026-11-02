@@ -288,14 +288,15 @@ class ClosingController extends Controller
     }
 
     /**
-     * Update stok akhir dan harga manual material.
+     * Update stok akhir; harga RAPLY berasal dari pembelian aktual.
      *
-     * Harga komponen disimpan per closing supaya harga SO dan harga
-     * perhitungan HPP material menggunakan angka manual yang sama.
+     * Harga manual tetap tersedia untuk EPUL. RAPLY menghitung harga dari
+     * Expense Bahan Baku dan mengunci input harga.
      */
     public function updateStockAkhir(Request $r)
     {
         $branchId = $this->branchId($r);
+        $isRaply = Branch::whereKey($branchId)->where('code', 'RAPLY')->exists();
 
         $d = $r->validate([
             'month' => 'required|integer|between:1,12',
@@ -392,7 +393,9 @@ class ClosingController extends Controller
         $warning = $this->service->propagateStockAwalToNext($closing);
 
         return back()
-            ->with('message', 'Stock akhir dan harga manual material berhasil disimpan.')
+            ->with('message', $isRaply
+                ? 'Stock akhir dan harga Stock Opname berhasil disimpan. Harga pembelian dan HPP tetap dihitung dari Expense.'
+                : 'Stock akhir dan harga manual material berhasil disimpan.')
             ->with('warning', $warning);
     }
 
@@ -735,10 +738,8 @@ class ClosingController extends Controller
         $expenses = $data['expenses'] ?? collect();
         $materialRows = $data['materialRows'] ?? collect();
         $hpp = $data['hpp'] ?? ['hasilCetak' => 0, 'allRows' => collect(), 'totalHpp' => 0, 'totalRpMeter' => 0];
-        $soTotal = $materialRows->sum(
-            fn ($material) => (float) ($material['stock_akhir'] ?? 0)
-                * (float) ($material['unit_cost'] ?? 0)
-        );
+        $isRaplyExport = $branch?->code === 'RAPLY';
+        $soTotal = $materialRows->sum(fn ($material) => (float) ($material['stock_value'] ?? 0));
 
         $spreadsheet = new Spreadsheet;
         $sheet = $spreadsheet->getActiveSheet();
@@ -868,12 +869,11 @@ class ClosingController extends Controller
             4
         );
         $stockOpnameRows = $materialRows->map(fn ($m) => [
-            $m['material']->display_name ?? 'N/A',
-            number_format((float) ($m['stock_akhir'] ?? 0), 2, '.', '')
-                .' '.($m['material']->unit ?? ''),
-            (float) ($m['unit_cost'] ?? 0),
-            (float) ($m['stock_akhir'] ?? 0) * (float) ($m['unit_cost'] ?? 0),
-        ])->all();
+                $m['material']->display_name ?? 'N/A',
+                number_format((float) ($m['stock_akhir'] ?? 0), 2, '.', '').' '.($m['material']->unit ?? ''),
+                (float) ($m['so_unit_cost'] ?? $m['unit_cost'] ?? 0),
+                (float) ($m['stock_value'] ?? 0),
+            ])->all();
         $stockOpnameRows[] = ['Total Stock Opname', null, null, $soTotal];
         $row = $this->excelTable(
             $sheet,
@@ -886,14 +886,21 @@ class ClosingController extends Controller
 
         /* ---------- Rincian material ---------- */
         $row = $this->excelSectionTitle($sheet, $row, 'RINCIAN MATERIAL', 6);
-        $materialExportRows = $materialRows->map(fn ($m) => [
-            ($m['material']->display_name ?? 'N/A').' '.($m['material']->unit ?? ''),
-            (float) ($m['stock_awal'] ?? 0),
-            (float) ($m['unit_cost'] ?? 0),
-            (float) ($m['incoming_quantity'] ?? 0),
-            (float) ($m['purchase_value'] ?? 0),
-            (float) ($m['stock_akhir'] ?? 0),
-        ])->all();
+        $materialExportRows = $materialRows->map(function ($m) use ($isRaplyExport) {
+            $priceDetails = collect($m['purchase_details'] ?? [])->map(fn ($priceRow) =>
+                'Rp'.number_format((float) $priceRow['unit_price'], 2, ',', '.')
+                    .' × '.number_format((float) $priceRow['quantity'], 2, ',', '.').' '.($m['material']->unit ?? '')
+            )->implode(PHP_EOL);
+
+            return [
+                ($m['material']->display_name ?? 'N/A').' '.($m['material']->unit ?? ''),
+                (float) ($m['stock_awal'] ?? 0),
+                $isRaplyExport ? ($priceDetails ?: 'Tidak ada pembelian periode ini') : (float) ($m['unit_cost'] ?? 0),
+                (float) ($m['incoming_quantity'] ?? 0),
+                (float) ($m['purchase_value'] ?? 0),
+                (float) ($m['stock_akhir'] ?? 0),
+            ];
+        })->all();
 
         $fixedCosts = [
             'Gaji Karyawan' => (float) ($closing->gaji_karyawan ?? 0),
@@ -919,7 +926,7 @@ class ClosingController extends Controller
             $row,
             ['Nama Komponen', 'Stock Awal', 'Harga Komponen', 'Qty', 'Pembelian', 'Stock Akhir'],
             $materialExportRows,
-            currencyCols: [2, 4],
+            currencyCols: $isRaplyExport ? [4] : [2, 4],
         );
         $row += 2;
 

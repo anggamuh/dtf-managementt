@@ -227,7 +227,7 @@
     {{-- SECTION 4: STOCK OPNAME (SO) BAHAN BAKU --}}
     @php
         $soTotal = $materialRows->sum(
-            fn ($row) => (float) $row['stock_akhir'] * (float) $row['unit_cost']
+            fn ($row) => (float) $row['stock_akhir'] * (float) ($row['so_unit_cost'] ?? $row['unit_cost'] ?? 0)
         );
     @endphp
 
@@ -236,7 +236,7 @@
             <div>
                 <h2 class="text-lg font-bold text-[#0F172A] dark:text-[#F8FAFC]">Stock Opname Bahan Baku</h2>
                 <p class="mt-1 text-xs text-[#64748B] dark:text-[#94A3B8]">
-                    Satuan diambil dari Stock Akhir material. Total = Satuan × Harga Manual.
+                    Satuan diambil dari Stock Akhir material. Total nilai Stock Opname = Stock Akhir × Harga manual.
                 </p>
             </div>
 
@@ -268,7 +268,7 @@
                         @forelse($materialRows as $row)
                             @php
                                 $stockAkhir = (float) $row['stock_akhir'];
-                                $hargaSo = (float) $row['unit_cost'];
+                                $hargaSo = (float) ($row['so_unit_cost'] ?? $row['unit_cost'] ?? 0);
                                 $totalSo = $stockAkhir * $hargaSo;
                             @endphp
 
