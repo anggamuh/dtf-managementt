@@ -1016,7 +1016,7 @@ class ClosingService
             ->orderByDesc('year')
             ->orderByDesc('month')
             ->orderByDesc('id')
-            ->get()
+            ->get();
 
         $normalized = $this->normalizeMaterialName($material->name);
         foreach ($previousClosings as $previousClosing) {
