@@ -118,7 +118,7 @@
                                         </div>
                                     </details>
                                     @if($row['valuation_warning'])
-                                        <span class="mt-1 block text-[11px] font-medium text-amber-600 dark:text-amber-400" title="Sebagian stok awal tidak memiliki harga closing terdahulu yang valid.">Nilai sebagian stok awal belum tersedia</span>
+                                        <span class="mt-1 block text-[11px] font-medium text-amber-600 dark:text-amber-400" title="Closing sebelumnya dan transaksi Expense historis tidak menyediakan lapisan FIFO berharga yang dapat direkonsiliasi untuk jumlah ini.">Nilai FIFO belum tersedia untuk {{ number_format($row['valuation_warning_quantity'], 2, ',', '.') }} {{ $row['material']->unit }} stok awal</span>
                                     @endif
                                 @elseif($row['price_warning'])
                                     <span class="text-xs font-medium text-amber-600 dark:text-amber-400">Harga pembelian belum tersedia</span>

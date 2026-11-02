@@ -164,6 +164,104 @@ class ClosingRaplyAutomaticMaterialCostTest extends TestCase
         $this->assertSame(500.0, (float) $rows[0]['stock_value']);
     }
 
+    public function test_raply_combines_two_head_and_four_head_opening_layers_for_shared_materials(): void
+    {
+        $raply = Branch::create(['name' => 'RAPLY', 'code' => 'RAPLY', 'active' => true]);
+        $machine2 = Machine::create(['branch_id' => $raply->id, 'name' => 'Mesin 2 Head', 'code' => '2H', 'head_count' => 2, 'is_active' => true]);
+        $machine4 = Machine::create(['branch_id' => $raply->id, 'name' => 'Mesin 4 Head', 'code' => '4H', 'head_count' => 4, 'is_active' => true]);
+        $names = ['CLEANER', 'PET FILM', 'POWDER CRISTAL', 'TINTA CMYK', 'TINTA PUTIH'];
+        $previous = $this->closing($raply, 7, 2026, '2026-07-01', '2026-07-31');
+        $current = $this->closing($raply, 8, 2026, '2026-08-01', '2026-08-31');
+        $canonical = [];
+
+        foreach ($names as $name) {
+            $material = Material::create(['branch_id' => $raply->id, 'name' => $name, 'unit' => 'kg', 'stock' => 5, 'minimum_stock' => 0, 'price' => 0, 'is_active' => true]);
+            $canonical[$name] = $material;
+            $current->materials()->create(['material_id' => $material->id, 'stock_awal' => 0, 'stock_akhir' => 5]);
+            foreach ([[$machine2, 2, 100], [$machine4, 3, 200]] as [$machine, $quantity, $unitPrice]) {
+                $legacy = Material::create([
+                    'branch_id' => $raply->id,
+                    'machine_id' => $machine->id,
+                    'name' => $name.' ('.$machine->head_count.' Head)',
+                    'unit' => 'kg',
+                    'stock' => 0,
+                    'minimum_stock' => 0,
+                    'price' => 0,
+                    'is_active' => false,
+                ]);
+                $previous->materials()->create([
+                    'material_id' => $legacy->id,
+                    'stock_awal' => 0,
+                    'stock_akhir' => $quantity,
+                    'persediaan_lapisan' => [['quantity' => $quantity, 'unit_price' => $unitPrice]],
+                ]);
+            }
+        }
+
+        $service = app(ClosingService::class);
+        $service->syncMaterialComponents($current);
+        $rows = $service->getMaterialRows($raply->id, now()->parse('2026-08-01'), now()->parse('2026-08-31'), $current)->keyBy(fn ($row) => $row['material']->name);
+
+        foreach ($names as $name) {
+            $this->assertSame(5.0, (float) $current->materials()->where('material_id', $canonical[$name]->id)->value('stock_awal'), $name.' opening quantity');
+            $this->assertFalse($rows[$name]['valuation_warning'], $name.' should carry both priced layers');
+            $this->assertEquals(800.0, (float) $rows[$name]['stock_value'], $name.' FIFO inventory value');
+        }
+    }
+
+    public function test_raply_rebuilds_missing_prior_layers_from_historical_expenses_when_closings_reconcile(): void
+    {
+        $raply = Branch::create(['name' => 'RAPLY', 'code' => 'RAPLY', 'active' => true]);
+        $machine2 = Machine::create(['branch_id' => $raply->id, 'name' => 'Mesin 2 Head', 'code' => '2H', 'head_count' => 2, 'is_active' => true]);
+        $machine4 = Machine::create(['branch_id' => $raply->id, 'name' => 'Mesin 4 Head', 'code' => '4H', 'head_count' => 4, 'is_active' => true]);
+        $material = Material::create(['branch_id' => $raply->id, 'name' => 'PET FILM', 'unit' => 'kg', 'stock' => 4, 'minimum_stock' => 0, 'price' => 0, 'is_active' => true]);
+        $old2 = Material::create(['branch_id' => $raply->id, 'machine_id' => $machine2->id, 'name' => 'PET FILM (2 Head)', 'unit' => 'kg', 'stock' => 0, 'minimum_stock' => 0, 'price' => 0, 'is_active' => false]);
+        $old4 = Material::create(['branch_id' => $raply->id, 'machine_id' => $machine4->id, 'name' => 'PET FILM (4 Head)', 'unit' => 'kg', 'stock' => 0, 'minimum_stock' => 0, 'price' => 0, 'is_active' => false]);
+        $july = $this->closing($raply, 7, 2026, '2026-07-01', '2026-07-31');
+        $july->materials()->create(['material_id' => $old2->id, 'stock_awal' => 0, 'stock_akhir' => 1]);
+        $july->materials()->create(['material_id' => $old4->id, 'stock_awal' => 0, 'stock_akhir' => 3]);
+        $this->expense($raply, $old2, '2026-07-03', 'Bahan Baku', 2, 200);
+        $this->expense($raply, $old4, '2026-07-05', 'Bahan Baku', 3, 600);
+        $august = $this->closing($raply, 8, 2026, '2026-08-01', '2026-08-31');
+        $component = $august->materials()->create(['material_id' => $material->id, 'stock_awal' => 0, 'stock_akhir' => 3]);
+        $this->expense($raply, $material, '2026-08-03', 'Bahan Baku', 2, 600);
+
+        $service = app(ClosingService::class);
+        $service->calculateHpp($august, now()->parse('2026-08-01'), now()->parse('2026-08-31'));
+        $rows = $service->getMaterialRows($raply->id, now()->parse('2026-08-01'), now()->parse('2026-08-31'), $august);
+
+        $this->assertFalse($rows[0]['valuation_warning']);
+        $this->assertEquals([
+            ['quantity' => 1.0, 'unit_price' => 100.0],
+            ['quantity' => 3.0, 'unit_price' => 200.0],
+        ], $rows[0]['opening_layers']);
+        $this->assertSame(800.0, (float) $rows[0]['stock_value']);
+        $this->assertSame(500.0, (float) $august->fresh()->hpp);
+        $this->assertEquals([
+            ['quantity' => 1.0, 'unit_price' => 200.0],
+            ['quantity' => 2.0, 'unit_price' => 300.0],
+        ], $component->fresh()->persediaan_lapisan);
+        $this->assertSame(4.0, (float) $component->fresh()->stock_awal);
+    }
+
+    public function test_raply_keeps_powder_distinct_from_powder_cristal(): void
+    {
+        $raply = Branch::create(['name' => 'RAPLY', 'code' => 'RAPLY', 'active' => true]);
+        $powder = Material::create(['branch_id' => $raply->id, 'name' => 'POWDER', 'unit' => 'kg', 'stock' => 1, 'minimum_stock' => 0, 'price' => 0, 'is_active' => true]);
+        $cristal = Material::create(['branch_id' => $raply->id, 'name' => 'POWDER CRISTAL', 'unit' => 'kg', 'stock' => 2, 'minimum_stock' => 0, 'price' => 0, 'is_active' => true]);
+        $previous = $this->closing($raply, 7, 2026, '2026-07-01', '2026-07-31');
+        $previous->materials()->create(['material_id' => $powder->id, 'stock_awal' => 0, 'stock_akhir' => 1, 'persediaan_lapisan' => [['quantity' => 1, 'unit_price' => 50]]]);
+        $previous->materials()->create(['material_id' => $cristal->id, 'stock_awal' => 0, 'stock_akhir' => 2, 'persediaan_lapisan' => [['quantity' => 2, 'unit_price' => 80]]]);
+        $current = $this->closing($raply, 8, 2026, '2026-08-01', '2026-08-31');
+        $current->materials()->create(['material_id' => $powder->id, 'stock_awal' => 1, 'stock_akhir' => 1]);
+        $current->materials()->create(['material_id' => $cristal->id, 'stock_awal' => 2, 'stock_akhir' => 2]);
+
+        $rows = app(ClosingService::class)->getMaterialRows($raply->id, now()->parse('2026-08-01'), now()->parse('2026-08-31'), $current)->keyBy(fn ($row) => $row['material']->name);
+
+        $this->assertSame(50.0, (float) $rows['POWDER']['stock_value']);
+        $this->assertSame(160.0, (float) $rows['POWDER CRISTAL']['stock_value']);
+    }
+
     private function closing(Branch $branch, int $month, int $year, string $start, string $end): Closing
     {
         return Closing::create([

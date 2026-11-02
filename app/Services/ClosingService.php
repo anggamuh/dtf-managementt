@@ -449,10 +449,20 @@ class ClosingService
 
         $prevClosing = Closing::query()
             ->where('branch_id', $closing->branch_id)
-            ->whereNotNull('period_end')
-            ->where('period_end', '<', $currentStart->toDateString())
+            ->where(function ($query) use ($currentStart, $closing) {
+                $query->where(fn ($period) => $period->whereNotNull('period_end')->where('period_end', '<', $currentStart->toDateString()))
+                    ->orWhere(function ($legacy) use ($closing) {
+                        $legacy->whereNull('period_end')
+                            ->where(function ($date) use ($closing) {
+                                $date->where('year', '<', $closing->year)
+                                    ->orWhere(fn ($sameYear) => $sameYear->where('year', $closing->year)->where('month', '<', $closing->month));
+                            });
+                    });
+            })
             ->orderByDesc('period_end')
             ->orderByDesc('id')
+            ->get()
+            ->sortByDesc(fn ($past) => $this->closingPeriodSortKey($past))
             ->first();
 
         /*
@@ -511,19 +521,20 @@ class ClosingService
          *
          * Hanya field stock_awal yang di-update.
          */
+        $prevClosing->loadMissing('materials.material');
         $currentComponents = $closing
             ->materials()
+            ->with('material')
             ->get();
 
         foreach ($currentComponents as $component) {
-            $prevComponent = $prevClosing
-                ->materials()
-                ->where('material_id', $component->material_id)
-                ->first();
+            $previousRows = $this->isRaplyBranch((int) $closing->branch_id) && $component->material
+                ? $this->matchingClosingMaterialRows($prevClosing, $component->material)
+                : $prevClosing->materials->where('material_id', $component->material_id);
 
-            if ($prevComponent) {
+            if ($previousRows->isNotEmpty()) {
                 $component->update([
-                    'stock_awal' => (float) $prevComponent->stock_akhir,
+                    'stock_awal' => (float) $previousRows->sum('stock_akhir'),
                 ]);
             }
         }
@@ -548,10 +559,9 @@ class ClosingService
             ->get();
 
         foreach ($materials as $material) {
-            $prevComponent = $prevClosing
-                ->materials()
-                ->where('material_id', $material->id)
-                ->first();
+            $previousRows = $this->isRaplyBranch((int) $closing->branch_id)
+                ? $this->matchingClosingMaterialRows($prevClosing, $material)
+                : $prevClosing->materials->where('material_id', $material->id);
 
             /*
              * Material baru:
@@ -562,8 +572,8 @@ class ClosingService
              * karena Material.stock bisa sudah termasuk pembelian periode
              * berjalan dan akan membuat stok awal terlihat dobel.
              */
-            $stockAwal = $prevComponent
-                ? (float) $prevComponent->stock_akhir
+            $stockAwal = $previousRows->isNotEmpty()
+                ? (float) $previousRows->sum('stock_akhir')
                 : 0.0;
 
             $closing->materials()->create([
@@ -755,6 +765,9 @@ class ClosingService
                     $fifo = $this->calculateFifoCost($openingLayers, $materialPurchases, $usage, $stockAwal);
                     $inventoryLayers = $fifo['ending_layers'];
                     $materialCost = $fifo['consumed_value'];
+                    $unpricedOpeningQuantity = collect($openingLayers)
+                        ->filter(fn ($layer) => (float) ($layer['unit_price'] ?? 0) <= 0)
+                        ->sum('quantity');
                     // RAPLY closing inventory is valued from the remaining FIFO
                     // layers. harga_komponen is stock-opname input and must not
                     // overwrite the actual purchase-layer valuation.
@@ -815,6 +828,8 @@ class ClosingService
                     'price_warning' => $priceWarning,
 
                     'valuation_warning' => $valuationWarning,
+
+                    'valuation_warning_quantity' => $isRaply ? (float) ($unpricedOpeningQuantity ?? 0) : 0.0,
 
                     'material_cost' => $materialCost,
 
@@ -992,7 +1007,23 @@ class ClosingService
             ->values();
     }
 
-    private function previousClosingMaterialRecord(Closing $closing, Material $material): ?ClosingMaterial
+    private function matchingClosingMaterialRows(Closing $closing, Material $material): Collection
+    {
+        $closing->loadMissing('materials.material');
+        $normalized = $this->normalizeMaterialName($material->name);
+
+        return $closing->materials->filter(function ($component) use ($material, $normalized) {
+            return (int) $component->material_id === (int) $material->id
+                || $this->normalizeMaterialName($component->material?->name) === $normalized;
+        })->values();
+    }
+
+    /**
+     * Return every matching row from the nearest previous closing that has
+     * this material. RAPLY machine-specific rows are separate historical
+     * balances and must be combined when the active material is shared.
+     */
+    private function previousClosingMaterialRecords(Closing $closing, Material $material): array
     {
         $periodStart = $closing->period_start
             ? Carbon::parse($closing->period_start)->toDateString()
@@ -1016,20 +1047,17 @@ class ClosingService
             ->orderByDesc('year')
             ->orderByDesc('month')
             ->orderByDesc('id')
-            ->get();
+            ->get()
+            ->sortByDesc(fn ($past) => $this->closingPeriodSortKey($past));
 
-        $normalized = $this->normalizeMaterialName($material->name);
         foreach ($previousClosings as $previousClosing) {
-            $match = $previousClosing->materials->first(function ($component) use ($material, $normalized) {
-                return (int) $component->material_id === (int) $material->id
-                    || $this->normalizeMaterialName($component->material?->name) === $normalized;
-            });
-            if ($match) {
-                return $match;
+            $matches = $this->matchingClosingMaterialRows($previousClosing, $material);
+            if ($matches->isNotEmpty()) {
+                return [$previousClosing, $matches];
             }
         }
 
-        return null;
+        return [null, collect()];
     }
 
     private function previousClosingMaterialLayers(Closing $closing, Material $material, float $openingQty): array
@@ -1038,22 +1066,37 @@ class ClosingService
             return [];
         }
 
-        $record = $this->previousClosingMaterialRecord($closing, $material);
-        $layers = collect($record?->persediaan_lapisan ?? [])
-            ->map(fn ($layer) => [
-                'quantity' => max(0, (float) ($layer['quantity'] ?? 0)),
-                'unit_price' => max(0, (float) ($layer['unit_price'] ?? 0)),
-            ])
-            ->filter(fn ($layer) => $layer['quantity'] > 0)
-            ->values()
-            ->all();
+        [$previousClosing, $records] = $this->previousClosingMaterialRecords($closing, $material);
+        $layers = [];
 
-        if ($layers === []) {
-            $legacyPrice = (float) ($record?->harga_persediaan ?? $record?->harga_komponen ?? 0);
-            return $legacyPrice > 0 ? [['quantity' => $openingQty, 'unit_price' => $legacyPrice]] : [];
+        foreach ($records as $record) {
+            $recordLayers = collect($record->persediaan_lapisan ?? [])
+                ->map(fn ($layer) => [
+                    'quantity' => max(0, (float) ($layer['quantity'] ?? 0)),
+                    'unit_price' => max(0, (float) ($layer['unit_price'] ?? 0)),
+                ])
+                ->filter(fn ($layer) => $layer['quantity'] > 0)
+                ->values()
+                ->all();
+
+            if ($recordLayers === []) {
+                $recordQty = max(0, (float) $record->stock_akhir);
+                $legacyPrice = (float) ($record->harga_persediaan ?? $record->harga_komponen ?? 0);
+                if ($recordQty > 0) {
+                    $recordLayers[] = [
+                        'quantity' => $recordQty,
+                        'unit_price' => max(0, $legacyPrice),
+                    ];
+                }
+            }
+
+            array_push($layers, ...$recordLayers);
         }
 
         $layerQty = array_sum(array_column($layers, 'quantity'));
+        $pricedLayerQty = collect($layers)
+            ->filter(fn ($layer) => (float) $layer['unit_price'] > 0)
+            ->sum('quantity');
         if ($layerQty > $openingQty) {
             $excess = $layerQty - $openingQty;
             for ($index = count($layers) - 1; $index >= 0 && $excess > 0; $index--) {
@@ -1061,13 +1104,146 @@ class ClosingService
                 $layers[$index]['quantity'] -= $removed;
                 $excess -= $removed;
             }
-        } elseif ($layerQty < $openingQty) {
+        }
+
+        if ($layerQty < $openingQty || $pricedLayerQty < $openingQty) {
+            // Try rebuilding the missing layer history from actual purchases
+            // and consecutive physical closing snapshots before declaring it
+            // unpriced. This also applies when quantity exists but its price
+            // layer was never stored in a previous deployment.
+            $recoveredLayers = $this->rebuildHistoricalFifoLayers($closing, $material, $previousClosing);
+            if ($recoveredLayers !== null
+                && abs(array_sum(array_column($recoveredLayers, 'quantity')) - $openingQty) < 0.01) {
+                return $recoveredLayers;
+            }
+
             // The missing quantity has no traceable FIFO cost. Keep it visible
             // as unpriced rather than copying a neighboring layer's price.
-            $layers[] = ['quantity' => $openingQty - $layerQty, 'unit_price' => 0.0];
+            if ($layerQty < $openingQty) {
+                $layers[] = ['quantity' => $openingQty - $layerQty, 'unit_price' => 0.0];
+            }
         }
 
         return array_values(array_filter($layers, fn ($layer) => $layer['quantity'] > 0));
+    }
+
+    /**
+     * Rebuild a missing prior FIFO snapshot from actual Expense purchases and
+     * consecutive closing stock counts. Recovery is accepted only when the
+     * chain begins at zero stock and every transition reconciles exactly.
+     */
+    private function rebuildHistoricalFifoLayers(Closing $current, Material $material, ?Closing $target): ?array
+    {
+        if (! $target) {
+            return null;
+        }
+
+        $closings = Closing::query()
+            ->where('branch_id', $current->branch_id)
+            ->where(function ($query) use ($current) {
+                $periodStart = $current->period_start
+                    ? Carbon::parse($current->period_start)->toDateString()
+                    : Carbon::create((int) $current->year, (int) $current->month, 1)->toDateString();
+                $query->where('period_end', '<', $periodStart)
+                    ->orWhere(function ($legacy) use ($current) {
+                        $legacy->whereNull('period_end')
+                            ->where(function ($date) use ($current) {
+                                $date->where('year', '<', $current->year)
+                                    ->orWhere(fn ($sameYear) => $sameYear->where('year', $current->year)->where('month', '<', $current->month));
+                            });
+                    });
+            })
+            ->with('materials.material')
+            ->orderBy('period_end')
+            ->orderBy('year')
+            ->orderBy('month')
+            ->orderBy('id')
+            ->get()
+            ->sortBy(fn ($past) => $this->closingPeriodSortKey($past));
+
+        $history = $closings->map(fn ($past) => [
+            'closing' => $past,
+            'records' => $this->matchingClosingMaterialRows($past, $material),
+        ])->filter(fn ($entry) => $entry['records']->isNotEmpty())->values();
+
+        $targetIndex = $history->search(fn ($entry) => (int) $entry['closing']->id === (int) $target->id);
+        if ($targetIndex === false) {
+            return null;
+        }
+
+        $startIndex = null;
+        for ($index = 0; $index <= $targetIndex; $index++) {
+            if (abs((float) $history[$index]['records']->sum('stock_awal')) < 0.01) {
+                $startIndex = $index;
+                break;
+            }
+        }
+        if ($startIndex === null) {
+            return null;
+        }
+
+        $layers = [];
+        $previousEnd = null;
+        $previousStock = 0.0;
+        for ($index = $startIndex; $index <= $targetIndex; $index++) {
+            $entry = $history[$index];
+            /** @var Closing $past */
+            $past = $entry['closing'];
+            $records = $entry['records'];
+            $start = $past->period_start
+                ? Carbon::parse($past->period_start)->startOfDay()
+                : Carbon::create((int) $past->year, (int) $past->month, 1)->startOfMonth()->startOfDay();
+            $end = $past->period_end
+                ? Carbon::parse($past->period_end)->endOfDay()
+                : Carbon::create((int) $past->year, (int) $past->month, 1)->endOfMonth()->endOfDay();
+            $openingQty = (float) $records->sum('stock_awal');
+            $endingQty = (float) $records->sum('stock_akhir');
+
+            if ($previousEnd !== null) {
+                if (abs($openingQty - $previousStock) >= 0.01) {
+                    return null;
+                }
+                $gapStart = $previousEnd->copy()->addDay()->startOfDay();
+                $gapEnd = $start->copy()->subDay()->endOfDay();
+                if ($gapStart->lte($gapEnd)
+                    && $this->materialPurchasesForPeriod((int) $current->branch_id, $gapStart, $gapEnd)
+                        ->get((int) $material->id, collect())->isNotEmpty()) {
+                    return null;
+                }
+            } elseif (abs($openingQty) >= 0.01) {
+                return null;
+            }
+
+            $purchases = $this->materialPurchasesForPeriod((int) $current->branch_id, $start, $end)
+                ->get((int) $material->id, collect());
+            $purchaseQty = (float) $purchases->sum('quantity');
+            $usage = $openingQty + $purchaseQty - $endingQty;
+            if ($usage < -0.01 || $usage > $openingQty + $purchaseQty + 0.01) {
+                return null;
+            }
+
+            $fifo = $this->calculateFifoCost($layers, $purchases, max(0, $usage), $openingQty);
+            if ($fifo['unpriced_opening']) {
+                return null;
+            }
+            $layers = $fifo['ending_layers'];
+            if (abs(array_sum(array_column($layers, 'quantity')) - $endingQty) >= 0.01) {
+                return null;
+            }
+            $previousStock = $endingQty;
+            $previousEnd = $end->copy()->startOfDay();
+        }
+
+        return $layers;
+    }
+
+    private function closingPeriodSortKey(Closing $closing): string
+    {
+        $end = $closing->period_end
+            ? Carbon::parse($closing->period_end)
+            : Carbon::create((int) $closing->year, (int) $closing->month, 1)->endOfMonth();
+
+        return $end->toDateString().'-'.str_pad((string) $closing->id, 12, '0', STR_PAD_LEFT);
     }
 
     private function calculateFifoCost(array $openingLayers, Collection $purchases, float $usage, float $openingQty): array
@@ -1243,6 +1419,12 @@ class ClosingService
     ): void {
         $start = $start->copy()->startOfDay();
         $end = $end->copy()->endOfDay();
+
+        // Existing RAPLY closings need the same cross-machine stock carry as
+        // freshly generated closings when HPP is recalculated after deployment.
+        if ($this->isRaplyBranch((int) $closing->branch_id)) {
+            $this->syncMaterialComponents($closing);
+        }
 
         /*
          * SINGLE SOURCE OF TRUTH:
